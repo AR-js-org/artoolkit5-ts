@@ -1,0 +1,34 @@
+{
+  "name": "artoolkit5-ts",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/artoolkit5-ts.umd.cjs",
+  "module": "./dist/artoolkit5-ts.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/artoolkit5-ts.js",
+      "require": "./dist/artoolkit5-ts.umd.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ar-js-org/artoolkit5-wasm": "https://github.com/AR-js-org/artoolkit5-wasm#20542cd3d84a9c9d5495b9c728ca5620e834b33e",
+    "three": "^0.185.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/three": "^0.185.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0"
+  }
+}
