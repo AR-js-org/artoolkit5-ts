@@ -4,4 +4,4 @@ export type { ARToolKitState, MarkerPose, TrackedMarkerState } from './domain';
 export { createARToolKitState } from './init';
 export { loadPatternMarker } from './markers';
 export { trackMarker, processFrame } from './tracking';
-export { transMatToGLMat } from './math';
+export { transMatToGLMat, getCameraProjectionMatrix, arglCameraViewRHf } from './math';
