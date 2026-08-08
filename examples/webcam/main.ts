@@ -2,10 +2,10 @@
 
 // Import directly from the source code you are developing!
 import * as THREE from 'three';
-import { createARToolKitState, loadPatternMarker, trackMarker, processFrame } from './../../src/index';
+import {createARToolKitState, loadPatternMarker, processFrame, trackMarker} from './../../src/index';
 //@ts-ignore
 import wasmUrl from '/node_modules/@ar-js-org/artoolkit5-wasm/dist/artoolkit5.wasm?url';
-import { getCameraProjectionMatrix } from '../../src/math';
+import {getCameraProjectionMatrix} from '../../src/math';
 
 const setMatrix = function (matrix: any, value: any) {
     const array: any = [];
@@ -53,11 +53,10 @@ async function start() {
         const context_process = canvas_process.getContext("2d", { willReadFrequently: true })!;
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: 640, height: 480, facingMode: 'environment' },
+            video.srcObject = await navigator.mediaDevices.getUserMedia({
+                video: {width: 640, height: 480, facingMode: 'environment'},
                 audio: false
             });
-            video.srcObject = stream;
 
             await new Promise<void>((resolve) => {
                 video.onloadedmetadata = () => {
@@ -80,7 +79,7 @@ async function start() {
         );
 
         const markerId = await loadPatternMarker(state, './data/patt.hiro'); // Load a sample marker
-        const tracker = await trackMarker(state, markerId, 1.0); // Track the marker with ID 0 and width 1.0 units
+        await trackMarker(state, markerId, 1.0); // Track the marker with ID 0 and width 1.0 units
         // --- THREE.JS SETUP ---
         // Set alpha to true to see the underlying HTML video
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
