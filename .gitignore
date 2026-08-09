@@ -22,4 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.agents
+# Agent transcripts stay local; skills are versioned.
+# Git cannot re-include a path whose parent directory is excluded, so the
+# directory contents are ignored rather than the directory itself.
+.agents/*
+!.agents/skills/
