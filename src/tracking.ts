@@ -1,75 +1,158 @@
-// tracking.ts
-import { ARToolKitState, TrackedMarkerState } from "./domain";
-import { transMatToGLMat, arglCameraViewRHf } from "./math";
+/*
+ *  tracking.ts
+ *  artoolkit5-ts
+ *
+ *  This file is part of artoolkit5-ts - AR-js-org.
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in
+ *  all copies or substantial portions of the Software.
+ *
+ *  artoolkit5-ts is distributed in the hope that it will be useful, but WITHOUT
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. See the MIT License
+ *  for more details.
+ *
+ *  You should have received a copy of the MIT License along with artoolkit5-ts.
+ *  If not, see <https://opensource.org/licenses/MIT>.
+ *
+ *  This library wraps a WebAssembly build of ARToolkit5 (WebARKitLib), which
+ *  is licensed under the GNU Lesser General Public License v3.0.
+ *
+ *  Copyright (c) 2026 AR-js-org
+ *
+ *  Author(s): Walter Perdan @kalwalt https://github.com/kalwalt
+ *
+ */
 
-export function trackMarker(state: ARToolKitState, pattId: number, markerWidth: number = 1.0): void {
-    // Initialize the state for this marker
-    console.log(state)
+import { ARToolKitState, MarkerPose, TrackedMarkerState } from './domain';
+import { arglCameraViewRHf, transMatToGLMat } from './math';
+
+/** Elements in ARToolKit's 3x4 pose matrix. */
+const POSE_ELEMENT_COUNT = 12;
+
+/** `HEAPF64` is indexed in 8-byte elements, so byte offsets shift right by 3. */
+const BYTES_TO_FLOAT64_INDEX_SHIFT = 3;
+
+/** ID reported by the detector for a square it could not identify. */
+const UNRECOGNISED_MARKER_ID = -1;
+
+/** The core computes luma itself, so no buffer is supplied. */
+const EMPTY_LUMA_BUFFER: number[] = [];
+const CONVERT_TO_LUMA = true;
+
+/**
+ * Holds the intermediate 4x4 matrix between expansion and the right-handed
+ * conversion. Module-scoped so the per-frame path allocates nothing.
+ */
+const glMatrixScratch = new Float32Array(16);
+
+/**
+ * Registers a marker for tracking and allocates its reusable pose buffers.
+ *
+ * @param pattId ID returned by `loadPatternMarker`.
+ * @param markerWidth Physical marker width; the unit chosen here is the unit
+ *   all returned translations are expressed in.
+ */
+export function trackMarker(
+    state: ARToolKitState,
+    pattId: number,
+    markerWidth: number = 1.0
+): void {
     state.markers[pattId] = {
         id: pattId,
-        markerWidth: markerWidth,
+        markerWidth,
         inPrevious: false,
         inCurrent: false,
-        matrix: new Float64Array(12),
-        matrixGL: new Float32Array(16)
+        matrix: new Float64Array(POSE_ELEMENT_COUNT),
+        matrixGL: new Float32Array(16),
     };
 }
 
-export function processFrame(state: ARToolKitState, videoFrame: Uint8ClampedArray) {
+/**
+ * Detects registered markers in a single frame and returns their poses.
+ *
+ * Called once per animation frame, so it allocates no typed arrays: every pose
+ * is written into buffers owned by the marker's tracking state. Those buffers
+ * are reused next frame — copy them if you need to retain values.
+ *
+ * @param videoFrame RGBA pixels matching the width and height the state was
+ *   created with.
+ */
+export function processFrame(
+    state: ARToolKitState,
+    videoFrame: Uint8ClampedArray
+): MarkerPose[] {
+    detectMarkersInFrame(state, videoFrame);
+    advanceTrackingState(state);
+    return collectDetectedPoses(state);
+}
 
-    // 1. I/O: Pass the buffer to the C++ core (as ARController did)
-    state.core.passVideoData(videoFrame, [], true);
-
-    // 2. Execution: Detect markers in the current buffer
+function detectMarkersInFrame(state: ARToolKitState, videoFrame: Uint8ClampedArray): void {
+    state.core.passVideoData(videoFrame, EMPTY_LUMA_BUFFER, CONVERT_TO_LUMA);
     state.core.detectMarker();
-    const markerNum = state.core.getMarkerNum();
+}
 
-    // 3. State Management: Shift 'current' to 'previous' for all registered markers
+/** Rolls this frame's visibility into last frame's, so continuity survives. */
+function advanceTrackingState(state: ARToolKitState): void {
     for (const id in state.markers) {
         const marker = state.markers[id];
         marker.inPrevious = marker.inCurrent;
         marker.inCurrent = false;
     }
+}
 
-    const detected = [];
-    let transform_mat: Float32Array = new Float32Array(16);
+function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
+    const detected: MarkerPose[] = [];
+    const candidateCount = state.core.getMarkerNum();
 
-    // 4. Extraction: Iterate over the found squares
-    for (let i = 0; i < markerNum; i++) {
-        const markerInfo = state.core.getMarkerInfo(i);
+    for (let candidate = 0; candidate < candidateCount; candidate++) {
+        const { id } = state.core.getMarkerInfo(candidate);
+        if (id === UNRECOGNISED_MARKER_ID) continue;
 
-        // If the ID is valid and we are tracking this specific marker
-        if (markerInfo.id > -1 && state.markers[markerInfo.id]) {
-            const tracked = state.markers[markerInfo.id];
-            tracked.inCurrent = true;
+        const tracked = state.markers[id];
+        if (!tracked) continue;
 
-            // Use continuous tracking if it was visible in the previous frame
-            if (tracked.inPrevious) {
-                state.core.getTransMatSquareCont(i, tracked.markerWidth);
-            } else {
-                state.core.getTransMatSquare(i, tracked.markerWidth);
-            }
+        tracked.inCurrent = true;
+        updatePose(state, candidate, tracked);
 
-            // Extract the matrix from Emscripten's HEAP memory
-            const ptr = state.core.getTransform();
-            const heapIndex = ptr >> 3; // Division by 8 (Float64 is 8 bytes)
-
-            // Create a temporary view to copy the data safely
-            const heapMatrix = state.mod.HEAPF64.subarray(heapIndex, heapIndex + 12);
-            tracked.matrix.set(heapMatrix);
-
-            // 3x4 -> 4x4 WebGL conversion
-            transform_mat = transMatToGLMat(tracked.matrix);
-            tracked.matrixGL = arglCameraViewRHf(transform_mat);
-
-            // Return a "snapshot" of the state (optional: you could return the object itself)
-            detected.push({
-                id: tracked.id,
-                matrix: tracked.matrix,
-                matrixGL: tracked.matrixGL
-            });
-        }
+        detected.push({
+            id: tracked.id,
+            matrix: tracked.matrix,
+            matrixGL: tracked.matrixGL,
+        });
     }
 
     return detected;
+}
+
+function updatePose(
+    state: ARToolKitState,
+    candidate: number,
+    tracked: TrackedMarkerState
+): void {
+    // Continuous tracking is more stable, but is only valid when the marker was
+    // already visible in the previous frame.
+    if (tracked.inPrevious) {
+        state.core.getTransMatSquareCont(candidate, tracked.markerWidth);
+    } else {
+        state.core.getTransMatSquare(candidate, tracked.markerWidth);
+    }
+
+    copyPoseFromHeap(state, tracked.matrix);
+    transMatToGLMat(tracked.matrix, glMatrixScratch);
+    arglCameraViewRHf(glMatrixScratch, tracked.matrixGL);
+}
+
+function copyPoseFromHeap(state: ARToolKitState, destination: Float64Array): void {
+    const heapIndex = state.core.getTransform() >> BYTES_TO_FLOAT64_INDEX_SHIFT;
+    destination.set(
+        state.mod.HEAPF64.subarray(heapIndex, heapIndex + POSE_ELEMENT_COUNT)
+    );
 }
