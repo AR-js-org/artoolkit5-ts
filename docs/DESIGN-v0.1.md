@@ -39,7 +39,7 @@ These were confirmed by inspection, not assumed. They override earlier design no
 | **Detector tuning is unexposed** | Binary exposes `setThreshold`, `setThresholdMode`, `setLabelingMode`, `setImageProcMode`, `setPattRatio`, `setDebugMode`, `setLogLevel`, `setProjectionNearPlane`, `setProjectionFarPlane`, `getProcessingImage` | Justifies a `configureDetector` API. |
 | **`AR_MATRIX_CODE_*` constants are missing upstream** | `artoolkit5-constants@0.1.0` generates only modes `0`, `1`, `2` | Barcode cannot work from the constants package as published. Values hardcoded locally in v0.1; upstream issue filed. |
 | **Combined detection modes are absent upstream** | ARToolKit5's C enum defines `..._COLOR_AND_MATRIX: 3` and `..._MONO_AND_MATRIX: 4`; neither is generated | Simultaneous pattern+barcode should work via raw ints, but is **unverified**. See Risk R2. |
-| **`artoolkit5-wasm` does not resolve on npm** | `npm view` returns 404; local copy is `"private": true` at `0.1.1`, installed from a pinned git commit | Blocks npm publication of `artoolkit5-ts`, not GitHub publication. See Risk R1. |
+| **`artoolkit5-wasm` is published on npm** | `@ar-js-org/artoolkit5-wasm@0.1.2`, MIT, `latest` — published 2026-08-09, after this document was first written | Nothing blocks npm publication of `artoolkit5-ts`. The dependency moves from the pinned git commit to `^0.1.2`. |
 | **`arjs-plugin-artoolkit` already exists** | `@ar-js-org/arjs-plugin-artoolkit@0.1.3`, TypeScript, depends on `@ar-js-org/artoolkit5-js@^0.3.2` | Already runs a Web Worker and consumes `ImageBitmap`. It is our target consumer, and it already owns the threading we therefore do not ship. |
 
 ---
@@ -196,7 +196,7 @@ No worker ships in the library — `arjs-plugin-artoolkit` already owns its work
 
 | # | Risk | Impact | Mitigation |
 |---|---|---|---|
-| R1 | `@ar-js-org/artoolkit5-wasm` does not resolve on npm | Blocks npm publication | v0.1 ships as a GitHub release; npm publication gated on the wasm package. Dependency spec moves from git URL to `^0.1.1` once it resolves. |
+| ~~R1~~ | ~~`@ar-js-org/artoolkit5-wasm` does not resolve on npm~~ | — | **Resolved 2026-08-09.** Published as `0.1.2` (MIT). npm publication of `artoolkit5-ts` is no longer blocked. Remaining action: move the dependency spec from the git URL to `^0.1.2` in the packaging stage. |
 | R2 | Combined detection modes (`3`, `4`) unverified | `'color+matrix'` may not work | Test against the real engine. If it misbehaves, document as unsupported and users pick a single mode. String-union API absorbs this without a breaking change. |
 | R3 | `AR_MATRIX_CODE_*` values hardcoded locally | Drift from upstream C headers | Upstream issue filed on `artoolkit5-constants`; a single internal table makes the later swap trivial. |
 | R4 | Worker init unverified | `examples/worker/` may not work | The example is the proof. Failure indicates a wasm-side fix, not an API change. |
