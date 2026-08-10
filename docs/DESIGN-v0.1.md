@@ -173,6 +173,21 @@ No worker ships in the library — `arjs-plugin-artoolkit` already owns its work
 
 `artoolkit5-js` accepts image-like sources and performs canvas conversion internally. `artoolkit5-ts` deliberately does not — it takes RGBA bytes only and keeps `src/` free of any canvas API. On swapping engines, the plugin adds the `ImageBitmap` → pixels step (`OffscreenCanvas` + `drawImage` + `getImageData`, reusing one canvas) inside the worker it already runs. This is the sole integration cost, and it is deliberate: the plugin already owns the frame pump and the ImageBitmap, so it owns pixel extraction too. A shared `imageBitmapToPixels` helper is deferred to v0.2, to be decided from real integration experience.
 
+### 4.8 Matrix precision
+
+`MarkerPose` carries the same pose at two precisions, and the asymmetry is deliberate. It is easy to misread, so it is stated here as well as in the JSDoc.
+
+| Field | Type | Why |
+|---|---|---|
+| `matrix` | `Float64Array` (3×4) | The C core computes in `ARdouble` and writes to `HEAPF64`. Reading it as `Float64Array` is a lossless copy of what the engine produced. |
+| `matrixGL` | `Float32Array` (4×4) | WebGL is single-precision end to end: `uniformMatrix4fv` takes a `Float32Array` and GLSL's `highp float` is 32-bit. Wider precision is discarded on upload. |
+
+The principle: **keep full precision at the source, narrow exactly once at the boundary where the data becomes GPU-bound.** That narrowing happens inside `transMatToGLMat`.
+
+Using 64-bit throughout would not improve accuracy. Float32 carries ~7 significant decimal digits, resolving below a micron at metre scale, whereas marker pose error is dominated by camera noise, calibration error and detection jitter in the millimetre range — the optics are the limiting factor, not the float width. Double precision earns its keep for long chains of accumulated transforms or very large coordinate magnitudes (geospatial, planet-scale); a single marker-relative transform is neither.
+
+Practical consequence: exposing both is the point. CPU-side work on poses — smoothing filters, interpolation, physics — should use `matrix` and stay in 64-bit as long as possible. `matrixGL` is purely the render-ready form. `getCameraProjectionMatrix` likewise returns `Float64Array`.
+
 ---
 
 ## 5. Decision Log
@@ -210,3 +225,4 @@ No worker ships in the library — `arjs-plugin-artoolkit` already owns its work
 - **v0.2:** `imageBitmapToPixels` (pending integration experience), multi-marker sets, `getProcessingImage` debug view.
 - **v0.3+:** NFT tracking — blocked on `artoolkit5-wasm` exposing `setupAR2` and the KPM bindings.
 - **Upstream:** `artoolkit5-constants` to generate `AR_MATRIX_CODE_*` and the combined detection modes.
+- **Documentation:** as the API grows, design rationale and guides will outgrow a README plus one design document. Worth considering a dedicated home — a GitHub wiki, a docs site (the organisation already runs [AR.js-Docs](https://github.com/AR-js-org/AR.js-Docs) on MkDocs), or a docs repository shared across the AR.js-next packages. Deferred until there is enough material to justify the maintenance; until then, rationale belongs in JSDoc and this document.

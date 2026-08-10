@@ -42,12 +42,30 @@
  *
  * `matrix` and `matrixGL` are views onto buffers owned by the tracker and
  * reused every frame. Copy them if you need to retain values across frames.
+ *
+ * The differing precisions are deliberate: full precision is kept at the
+ * source and narrowed exactly once, at the boundary where the data becomes
+ * GPU-bound. Prefer `matrix` for any CPU-side maths — smoothing,
+ * interpolation, physics — and `matrixGL` only for rendering.
  */
 export interface MarkerPose {
     id: number;
-    /** 3x4 row-major pose, exactly as ARToolKit produces it. */
+    /**
+     * 3x4 row-major pose, exactly as ARToolKit produces it.
+     *
+     * 64-bit because the C core computes in `ARdouble` and writes to
+     * `HEAPF64`; reading it as `Float64Array` is a lossless copy.
+     */
     matrix: Float64Array;
-    /** 4x4 column-major right-handed pose, ready for WebGL. */
+    /**
+     * 4x4 column-major right-handed pose, ready for WebGL.
+     *
+     * 32-bit because WebGL is single-precision end to end — `uniformMatrix4fv`
+     * takes a `Float32Array` and GLSL's `highp float` is 32-bit, so any wider
+     * precision is discarded on upload. Not an accuracy compromise: float32
+     * resolves below a micron at metre scale, while pose error is dominated by
+     * camera noise and calibration in the millimetre range.
+     */
     matrixGL: Float32Array;
 }
 
