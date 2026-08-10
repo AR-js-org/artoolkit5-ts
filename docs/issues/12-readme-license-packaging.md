@@ -24,7 +24,7 @@ Both the LICENSE and the header disclose the **ARToolkit5 (WebARKitLib) LGPLv3 l
 ## package.json fixes
 
 1. **`three` is in `dependencies`** but `src/` never imports it — it is used only by `examples/`. Move it to `devDependencies`. If a renderer integration is ever added, it becomes a `peerDependency`, never a hard one.
-2. **`@ar-js-org/artoolkit5-wasm` is a pinned git commit URL.** Move to a semver range (`^0.1.1`) once the package resolves on npm. It currently 404s and its local copy is marked `"private": true`, which blocks npm publication of this library (Risk R1). v0.1 ships as a GitHub release until then.
+2. **`@ar-js-org/artoolkit5-wasm` is a pinned git commit URL.** Move it to `^0.1.2` — the package was published to npm on 2026-08-09 (MIT), so this is now unblocked. Consider whether it belongs in `dependencies` or `peerDependencies`: it is already `external` in the Vite config, and making it a peer lets consumers control which engine build they ship.
 3. Add `repository`, `bugs`, `homepage`, `keywords`, `license`, `author`.
 4. Verify the `files` array and `exports` map produce a correct package (`npm pack --dry-run`).
 
