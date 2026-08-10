@@ -1,12 +1,18 @@
-# artoolkit5-ts
+# artoolkit5-ts 🎯
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](tsconfig.json)
+[![WebAssembly](https://img.shields.io/badge/WebAssembly-ARToolkit5-654FF0.svg?logo=webassembly&logoColor=white)](https://github.com/AR-js-org/artoolkit5-wasm)
+[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#-roadmap)
+[![AR.js-next](https://img.shields.io/badge/AR.js--next-engine%20layer-00B4D8.svg)](https://github.com/AR-js-org/AR.js-next)
 
 TypeScript marker tracking for the browser, built on a WebAssembly build of ARToolkit5 (WebARKitLib).
 
 A composable, tree-shakeable alternative to the monolithic `ARController` of ARToolKit.js: state is plain data, operations are functions, and nothing is hidden behind a class.
 
-> **Status: alpha.** Pattern markers work end to end. The API is not yet stable and the package is not yet on npm. See [Roadmap](#roadmap).
+> ⚠️ **Status: alpha.** Pattern markers work end to end. The API is not yet stable and the package is not yet on npm. See [Roadmap](#-roadmap).
 
-## Where this fits
+## 🧩 Where this fits
 
 `artoolkit5-ts` is the detection engine layer of the AR.js-next ecosystem:
 
@@ -19,7 +25,7 @@ AR.js-next                ECS core, event bus, frame pump
 
 It is renderer-agnostic and DOM-free. It gives you marker poses as matrices; what you draw with them is your business — Three.js, Babylon.js, raw WebGL, or nothing at all.
 
-## Installation
+## 📦 Installation
 
 ```bash
 npm install github:AR-js-org/artoolkit5-ts @ar-js-org/artoolkit5-wasm
@@ -31,7 +37,7 @@ npm install github:AR-js-org/artoolkit5-ts @ar-js-org/artoolkit5-wasm
 
 `three` is only needed to run the examples, not the library.
 
-## Quick start
+## 🚀 Quick start
 
 ```typescript
 import {
@@ -67,7 +73,7 @@ npm run dev
 
 You will need the [Hiro marker](https://commons.wikimedia.org/wiki/File:Hiro_marker_wikipedia.png) printed or on a second screen.
 
-## Why functions instead of a controller class
+## 🧠 Why functions instead of a controller class
 
 The original `ARController` was a God Object: it owned the WASM module, the canvas, the video element, marker state and the render loop. That made it impossible to tree-shake, awkward to run in a Worker, and hard to test without a browser.
 
@@ -80,7 +86,7 @@ Here, `ARToolKitState` is a plain data container with no methods, and every oper
 
 The trade-off is deliberate: this library will not open your camera, create a canvas, or run a render loop for you. Those belong to your application.
 
-## API
+## 📖 API
 
 ### `createARToolKitState(width, height, cameraUrl, wasmUrl?)`
 
@@ -137,7 +143,7 @@ interface MarkerPose {
 }
 ```
 
-## Feeding frames from an ImageBitmap
+## 🖼️ Feeding frames from an ImageBitmap
 
 `processFrame` takes raw pixels, so `src/` never touches a canvas API. If your frames arrive as `ImageBitmap` — as they do in AR.js-next — convert them yourself, reusing one canvas rather than creating one per frame:
 
@@ -153,14 +159,14 @@ function toPixels(bitmap: ImageBitmap): Uint8ClampedArray {
 
 A shared helper for this is under consideration for a future release.
 
-## Limitations
+## ⚠️ Limitations
 
 - **Pattern markers only.** Barcode/matrix markers are planned; NFT is not currently possible, because the underlying WASM build exposes no NFT bindings.
 - **No teardown yet.** There is no `dispose` function, so a page that repeatedly creates state will leak the C++ instance.
 - **No detector tuning yet.** Threshold, threshold mode, labelling mode and related settings are exposed by the engine but not yet surfaced here.
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
 
-## Roadmap
+## 🗺️ Roadmap
 
 Detailed design and tracked work live in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md) and [`docs/issues/`](docs/issues).
 
@@ -168,7 +174,7 @@ Detailed design and tracked work live in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.
 
 **Later** — an `ImageBitmap` conversion helper, multi-marker sets, and NFT tracking once the WASM bindings exist upstream.
 
-## Development
+## 🛠️ Development
 
 ```bash
 npm run dev      # Vite dev server, opens the webcam example
@@ -178,7 +184,7 @@ npm run preview  # preview the production build
 
 Branch from `dev`; `main` holds release-ready code only. Commits follow [Conventional Commits](https://www.conventionalcommits.org/). Contributor guidance is in [`AGENTS.md`](AGENTS.md).
 
-## Licence
+## 📄 Licence
 
 MIT — see [LICENSE](LICENSE).
 
