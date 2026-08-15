@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+# Cancels superseded runs on the same branch, so a quick follow-up push does not
+# queue behind a run whose result no longer matters.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One failing version should still report the others, rather than
+      # cancelling them and hiding whether the break is version-specific.
+      fail-fast: false
+      matrix:
+        # 22 is the version used for development; 24 catches breakage on current
+        # before it becomes the default everywhere.
+        node-version: [ '22.x', '24.x' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      # `ci` rather than `install`: it installs exactly what the lockfile
+      # records and fails if the two have drifted.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Catches packaging faults that neither the build nor the tests would:
+      # a stray file entering the tarball, or `files`/`exports` pointing at
+      # something the build no longer produces.
+      - name: Verify the package contents
+        run: npm pack --dry-run
