@@ -69,6 +69,24 @@ export interface MarkerPose {
     matrixGL: Float32Array;
 }
 
+/**
+ * Outcome of a single call to `processFrame`.
+ *
+ * `lost` exists because the visibility transition is already computed while
+ * tracking, and discarding it would force every consumer to re-derive it by
+ * diffing successive results.
+ */
+export interface FrameResult {
+    /** Markers visible in this frame, with their poses. */
+    detected: MarkerPose[];
+    /**
+     * IDs of markers visible in the previous frame but not this one.
+     *
+     * Reported exactly once, on the frame the marker disappears.
+     */
+    lost: number[];
+}
+
 /** Per-marker tracking state, owned by {@link ARToolKitState}. */
 export interface TrackedMarkerState {
     id: number;

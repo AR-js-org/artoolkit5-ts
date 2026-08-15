@@ -31,7 +31,7 @@
  *
  */
 
-import { ARToolKitState, MarkerPose, TrackedMarkerState } from './domain';
+import { ARToolKitState, FrameResult, MarkerPose, TrackedMarkerState } from './domain';
 import { assertNotDisposed } from './errors';
 import { arglCameraViewRHf, transMatToGLMat } from './math';
 
@@ -80,7 +80,11 @@ export function trackMarker(
 }
 
 /**
- * Detects registered markers in a single frame and returns their poses.
+ * Detects registered markers in a single frame.
+ *
+ * Returns both the markers visible now and those that have just disappeared,
+ * so a consumer emitting found/updated/lost events does not have to diff
+ * successive results to recover information tracking already had.
  *
  * Called once per animation frame, so it allocates no typed arrays: every pose
  * is written into buffers owned by the marker's tracking state. Those buffers
@@ -93,12 +97,18 @@ export function trackMarker(
 export function processFrame(
     state: ARToolKitState,
     videoFrame: Uint8ClampedArray
-): MarkerPose[] {
+): FrameResult {
     assertNotDisposed(state, 'processFrame');
 
     detectMarkersInFrame(state, videoFrame);
     advanceTrackingState(state);
-    return collectDetectedPoses(state);
+
+    // Order matters: collecting poses is what marks markers as visible this
+    // frame, so anything still unmarked afterwards is what was just lost.
+    const detected = collectDetectedPoses(state);
+    const lost = collectLostMarkers(state);
+
+    return { detected, lost };
 }
 
 function detectMarkersInFrame(state: ARToolKitState, videoFrame: Uint8ClampedArray): void {
@@ -137,6 +147,25 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
     }
 
     return detected;
+}
+
+/**
+ * Markers visible last frame but not this one.
+ *
+ * Fires once per disappearance: the following frame rolls `inCurrent` (false)
+ * into `inPrevious`, so the condition no longer holds.
+ */
+function collectLostMarkers(state: ARToolKitState): number[] {
+    const lost: number[] = [];
+
+    for (const id in state.markers) {
+        const marker = state.markers[id];
+        if (marker.inPrevious && !marker.inCurrent) {
+            lost.push(marker.id);
+        }
+    }
+
+    return lost;
 }
 
 function updatePose(

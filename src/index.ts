@@ -35,6 +35,7 @@ export type {
     ARToolKitCore,
     ARToolKitModule,
     ARToolKitState,
+    FrameResult,
     MarkerInfo,
     MarkerPose,
     TrackedMarkerState,
