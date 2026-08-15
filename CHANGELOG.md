@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- promote:strip -->
 Nothing has been published yet. Everything below ships in the first release.
 
-When cutting it, rename this heading to `## [0.1.0] - YYYY-MM-DD`, add a fresh
-`## [Unreleased]` above, and update the link definitions at the bottom.
+The release workflow promotes this section automatically; this note is removed
+when it does. Everything between the `promote:strip` markers is dropped, so put
+anything here that should not survive into a released section.
+<!-- /promote:strip -->
 
 ### Added
 

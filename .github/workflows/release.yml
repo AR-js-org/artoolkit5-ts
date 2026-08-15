@@ -1,28 +1,44 @@
 name: Release
 
-# Publishing is triggered by publishing a GitHub Release, so the release notes
-# and the npm version are created in one deliberate act. A tag push would also
-# work, but an accidental or mistyped tag would publish immediately, and npm
-# versions cannot be replaced once taken.
+# Run manually from the Actions tab. This workflow performs the whole release:
+# it bumps the version, promotes the changelog, tags, creates the GitHub Release
+# and publishes to npm.
+#
+# It is one workflow rather than two on purpose. A Release created with the
+# default GITHUB_TOKEN does not trigger other workflows — GitHub blocks that to
+# prevent recursion — so a separate `on: release: published` publisher would
+# silently never fire.
 on:
-  release:
-    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without a leading v (e.g. 0.1.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Run every check and show the result without tagging or publishing'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
-      # Required for npm provenance: it mints the OIDC token that lets npm
-      # attest which workflow run and commit produced the tarball.
+      # Pushing the version commit and tag, and creating the Release.
+      contents: write
+      # npm provenance: mints the OIDC token letting npm attest which workflow
+      # run and commit produced the tarball.
       id-token: write
 
     steps:
-      - name: Checkout the released commit
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          # Full history: release notes are derived from commits since the
+          # previous tag, and a shallow clone has neither the tags nor the log.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -31,28 +47,36 @@ jobs:
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Validate the version
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$VERSION' is not a valid semver version. Give it without a leading v, e.g. 0.1.0."
+            exit 1
+          fi
+
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$VERSION already exists. Releasing it again would rewrite history."
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         run: npm ci
 
-      # The release tag is the only statement of intent about which version is
-      # being published; package.json is what npm actually uses. If they
-      # disagree the wrong version ships, and npm does not allow a published
-      # version to be replaced or reused.
-      - name: Verify the version matches the release tag
+      # npm never allows a version to be replaced or reused, so a collision has
+      # to be caught before anything is tagged or committed.
+      - name: Check the version is not already published
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          TAG_VERSION="${TAG#v}"
-          PKG_VERSION="$(node -p "require('./package.json').version")"
-
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Release tag is $TAG (version $TAG_VERSION) but package.json says $PKG_VERSION."
-            echo "Update package.json, or retag, so the two agree. Nothing has been published."
+          NAME="$(node -p "require('./package.json').name")"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already published. npm versions cannot be replaced."
             exit 1
           fi
-          echo "Publishing version $PKG_VERSION."
+          echo "$NAME@$VERSION is available."
 
-      # A release must not be able to publish something the branch protections
-      # would have rejected, so the full check suite runs again here.
       - name: Typecheck
         run: npm run typecheck
 
@@ -62,24 +86,75 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Show what will be published
+      - name: Set the package version
+        run: npm version "$VERSION" --no-git-tag-version
+
+      - name: Promote the changelog
+        run: node scripts/promote-changelog.mjs "$VERSION"
+
+      - name: Generate release notes
+        run: |
+          # Notes come from the commits, so they describe what actually landed
+          # rather than what someone remembered to write down.
+          node scripts/release-notes.mjs > release-notes.md
+          echo "--- release notes ---"
+          cat release-notes.md
+
+      - name: Show what would be published
         run: npm pack --dry-run
+
+      - name: Stop here on a dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "### Dry run — nothing was tagged or published"
+            echo ""
+            echo "Version \`$VERSION\` passed every check."
+            echo ""
+            cat release-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Dry run complete. No tag, no release, no publish."
+
+      - name: Commit and tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          git add package.json package-lock.json CHANGELOG.md
+          git commit -m "chore(release): $VERSION"
+          git tag -a "v$VERSION" -m "Release $VERSION"
+
+          git push origin HEAD:"${GITHUB_REF_NAME}"
+          git push origin "v$VERSION"
+
+      - name: Create the GitHub Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes-file release-notes.md \
+            --verify-tag
 
       # --access public is required for the first publish of a scoped package;
       # npm otherwise defaults it to restricted and fails on a free account.
       - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Summarise
+        if: ${{ !inputs.dry_run }}
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
           NAME="$(node -p "require('./package.json').name")"
           {
-            echo "### Published"
+            echo "### Released $NAME@$VERSION"
             echo ""
-            echo "\`$NAME@$VERSION\` — https://www.npmjs.com/package/$NAME/v/$VERSION"
+            echo "- npm: https://www.npmjs.com/package/$NAME/v/$VERSION"
+            echo "- Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$VERSION"
             echo ""
-            echo "Built with provenance from commit \`${{ github.sha }}\`."
+            echo "Published with provenance from \`${{ github.sha }}\`."
           } >> "$GITHUB_STEP_SUMMARY"
