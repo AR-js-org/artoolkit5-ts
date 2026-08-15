@@ -119,6 +119,22 @@ Detects registered markers in one frame. Returns `MarkerPose[]`, containing only
 
 This runs on every animation frame and allocates no typed arrays: poses are written into buffers owned by the marker's tracking state, and **those buffers are reused next frame**. Copy the values if you need to retain them.
 
+### `disposeARToolKitState(state)`
+
+Releases the WASM resources the state holds. Call it when tracking stops — otherwise a page that starts and stops AR leaks the C++ instance and its heap allocations every time.
+
+```typescript
+const state = await createARToolKitState(640, 480, cameraUrl);
+// … track markers …
+disposeARToolKitState(state);
+```
+
+Safe to call more than once. Afterwards every other operation on that state throws `ARToolKitError` rather than reaching freed memory, so a use-after-dispose gives you a clear message instead of a crash inside the WASM module.
+
+### `ARToolKitError`
+
+Thrown for misuse of this API — currently, using a state after disposing it. Distinct from a plain `Error` so you can tell an API mistake apart from a failure inside the WASM module or your own code.
+
 ### `getCameraProjectionMatrix(state)`
 
 Returns the projection matrix ARToolKit computed from your `camera_para.dat`, accounting for real lens distortion — which a generic perspective camera cannot.
@@ -161,18 +177,19 @@ A shared helper for this is under consideration for a future release.
 
 ## ⚠️ Limitations
 
-- **Pattern markers only.** Barcode/matrix markers are planned; NFT is not currently possible, because the underlying WASM build exposes no NFT bindings.
-- **No teardown yet.** There is no `dispose` function, so a page that repeatedly creates state will leak the C++ instance.
+- **Pattern markers only.** Barcode/matrix markers are planned; NFT is out of scope for this project — see [Roadmap](#-roadmap).
 - **No detector tuning yet.** Threshold, threshold mode, labelling mode and related settings are exposed by the engine but not yet surfaced here.
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
 
 ## 🗺️ Roadmap
 
-Detailed design and tracked work live in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md) and [`docs/issues/`](docs/issues).
+Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is tracked in [issues](https://github.com/AR-js-org/artoolkit5-ts/issues).
 
-**v0.1** — barcode markers, `configureDetector`, `disposeARToolKitState`, marker-lost reporting from `processFrame`, a verified Worker example, tests and CI.
+**v0.1** — lifecycle (done), packaging, marker-lost reporting from `processFrame`, tests and CI.
 
-**Later** — an `ImageBitmap` conversion helper, multi-marker sets, and NFT tracking once the WASM bindings exist upstream.
+**Later** — `configureDetector`, barcode markers, a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
+
+**Out of scope** — NFT tracking. This project and `artoolkit5-wasm` cover pattern and barcode markers; NFT belongs to other projects in the ecosystem.
 
 ## 🛠️ Development
 

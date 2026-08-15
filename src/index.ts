@@ -40,7 +40,8 @@ export type {
     TrackedMarkerState,
 } from './domain';
 
-export { createARToolKitState } from './init';
+export { ARToolKitError } from './errors';
+export { createARToolKitState, disposeARToolKitState } from './init';
 export { loadPatternMarker } from './markers';
 export { processFrame, trackMarker } from './tracking';
 export { arglCameraViewRHf, getCameraProjectionMatrix, transMatToGLMat } from './math';
