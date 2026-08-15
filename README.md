@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](tsconfig.json)
+[![Tested with Vitest](https://img.shields.io/badge/tested%20with-Vitest-6E9F18.svg?logo=vitest&logoColor=white)](test)
 [![WebAssembly](https://img.shields.io/badge/WebAssembly-ARToolkit5-654FF0.svg?logo=webassembly&logoColor=white)](https://github.com/AR-js-org/artoolkit5-wasm)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#-roadmap)
 [![AR.js-next](https://img.shields.io/badge/AR.js--next-engine%20layer-00B4D8.svg)](https://github.com/AR-js-org/AR.js-next)
@@ -209,10 +210,21 @@ Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is t
 ## 🛠️ Development
 
 ```bash
-npm run dev      # Vite dev server, opens the webcam example
-npm run build    # library build (ES + UMD) plus type declarations
-npm run preview  # preview the production build
+npm run dev        # Vite dev server, opens the webcam example
+npm run build      # library build (ES + UMD) plus type declarations
+npm run preview    # preview the production build
+npm test           # run the test suite once
+npm run test:watch # re-run tests on change
+npm run typecheck  # tsc --noEmit
 ```
+
+### Tests
+
+[Vitest](https://vitest.dev), covering the matrix maths, the marker visibility state machine and the dispose lifecycle. They run in well under a second because the WASM boundary is faked: `test/mock-core.ts` stands in for the Emscripten module and the bound C++ instance, so no browser and no compiled binary are needed.
+
+Coverage targets the code that fails *quietly* rather than a line count — a transposed matrix still renders, just in the wrong place, and a marker-lost event that fires twice looks fine until something downstream double-handles it.
+
+The suite is validated by mutation: deliberately breaking the collection order, the `Float32Array` return type, or the continuous-tracking condition each makes exactly one test fail. If you add tests, check they can actually fail.
 
 Branch from `dev`; `main` holds release-ready code only. Commits follow [Conventional Commits](https://www.conventionalcommits.org/). Contributor guidance is in [`AGENTS.md`](AGENTS.md).
 
