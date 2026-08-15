@@ -32,6 +32,7 @@
  */
 
 import { ARToolKitState, MarkerPose, TrackedMarkerState } from './domain';
+import { assertNotDisposed } from './errors';
 import { arglCameraViewRHf, transMatToGLMat } from './math';
 
 /** Elements in ARToolKit's 3x4 pose matrix. */
@@ -59,12 +60,15 @@ const glMatrixScratch = new Float32Array(16);
  * @param pattId ID returned by `loadPatternMarker`.
  * @param markerWidth Physical marker width; the unit chosen here is the unit
  *   all returned translations are expressed in.
+ * @throws {ARToolKitError} if the state has been disposed.
  */
 export function trackMarker(
     state: ARToolKitState,
     pattId: number,
     markerWidth: number = 1.0
 ): void {
+    assertNotDisposed(state, 'trackMarker');
+
     state.markers[pattId] = {
         id: pattId,
         markerWidth,
@@ -84,11 +88,14 @@ export function trackMarker(
  *
  * @param videoFrame RGBA pixels matching the width and height the state was
  *   created with.
+ * @throws {ARToolKitError} if the state has been disposed.
  */
 export function processFrame(
     state: ARToolKitState,
     videoFrame: Uint8ClampedArray
 ): MarkerPose[] {
+    assertNotDisposed(state, 'processFrame');
+
     detectMarkersInFrame(state, videoFrame);
     advanceTrackingState(state);
     return collectDetectedPoses(state);
