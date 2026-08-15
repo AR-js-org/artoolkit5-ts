@@ -7,6 +7,11 @@ export default defineConfig({
     open: '/examples/webcam/index.html',
   },
 
+  // `public/` holds assets for the dev server and examples. Copying them into
+  // dist would publish them as part of the library — favicon.svg was ending up
+  // in the npm tarball.
+  publicDir: false,
+
   // Build configuration: outputs a library (not an app)
   build: {
     outDir: 'dist',

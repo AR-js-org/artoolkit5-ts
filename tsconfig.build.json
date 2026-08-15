@@ -3,7 +3,10 @@
   "compilerOptions": {
     "emitDeclarationOnly": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // Declaration maps point back at src/, which the package does not ship.
+    // Emitting them would put maps in the tarball that resolve to nothing.
+    "declarationMap": false
   },
   "include": ["src/index.ts"]
 }

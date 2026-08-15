@@ -1,8 +1,36 @@
 {
-  "name": "artoolkit5-ts",
+  "name": "@ar-js-org/artoolkit5-ts",
   "version": "0.1.0",
   "private": false,
   "type": "module",
+  "description": "TypeScript marker tracking for the browser, built on a WebAssembly build of ARToolkit5 (WebARKitLib). Composable and tree-shakeable: state is plain data, operations are functions.",
+  "keywords": [
+    "artoolkit",
+    "artoolkit5",
+    "augmented-reality",
+    "ar",
+    "webar",
+    "marker-tracking",
+    "barcode-marker",
+    "webassembly",
+    "wasm",
+    "typescript",
+    "ar.js",
+    "webarkit"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Walter Perdan",
+    "url": "https://github.com/kalwalt"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AR-js-org/artoolkit5-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AR-js-org/artoolkit5-ts/issues"
+  },
+  "homepage": "https://github.com/AR-js-org/artoolkit5-ts#readme",
   "main": "./dist/artoolkit5-ts.umd.cjs",
   "module": "./dist/artoolkit5-ts.js",
   "types": "./dist/index.d.ts",
@@ -22,12 +50,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ar-js-org/artoolkit5-wasm": "https://github.com/AR-js-org/artoolkit5-wasm#20542cd3d84a9c9d5495b9c728ca5620e834b33e",
-    "three": "^0.185.0"
+    "@ar-js-org/artoolkit5-wasm": "^0.1.3"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
     "@types/three": "^0.185.0",
+    "three": "^0.185.0",
     "typescript": "^6.0.3",
     "vite": "^8.1.0"
   }
