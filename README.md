@@ -28,12 +28,12 @@ It is renderer-agnostic and DOM-free. It gives you marker poses as matrices; wha
 ## 📦 Installation
 
 ```bash
-npm install github:AR-js-org/artoolkit5-ts @ar-js-org/artoolkit5-wasm
+npm install github:AR-js-org/artoolkit5-ts
 ```
 
-[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.1.2`) provides the WebAssembly engine and is required. It is kept external rather than bundled, so you control which build you ship.
+[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.1.3`) provides the WebAssembly engine. It installs automatically as a dependency, and is kept external rather than bundled so it is fetched once and cached.
 
-`artoolkit5-ts` itself is not on npm yet — install it from GitHub until the first release.
+`@ar-js-org/artoolkit5-ts` is not on npm yet — install it from GitHub until the first release.
 
 `three` is only needed to run the examples, not the library.
 
@@ -45,7 +45,7 @@ import {
   loadPatternMarker,
   trackMarker,
   processFrame,
-} from 'artoolkit5-ts';
+} from '@ar-js-org/artoolkit5-ts';
 
 // 1. Initialise once — loads the WASM module and camera calibration
 const state = await createARToolKitState(640, 480, './data/camera_para.dat');
