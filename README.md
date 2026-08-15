@@ -56,12 +56,18 @@ const markerId = await loadPatternMarker(state, './data/patt.hiro');
 trackMarker(state, markerId, 1.0);
 
 // 3. Per frame: pass RGBA pixels in, get poses out
-const markers = processFrame(state, pixels);
+const { detected, lost } = processFrame(state, pixels);
 
-for (const marker of markers) {
+for (const marker of detected) {
   // marker.matrixGL is a 4x4 column-major right-handed matrix,
   // ready to hand to WebGL or Three.js
   mesh.matrix.fromArray(marker.matrixGL);
+}
+
+// `lost` holds markers that were visible last frame and are not now —
+// reported once, on the frame they disappear
+for (const id of lost) {
+  hideObjectFor(id);
 }
 ```
 
@@ -113,7 +119,16 @@ Registers a marker for tracking and allocates its reusable pose buffers.
 
 ### `processFrame(state, videoFrame)`
 
-Detects registered markers in one frame. Returns `MarkerPose[]`, containing only markers visible in this frame.
+Detects registered markers in one frame. Returns a `FrameResult`:
+
+```typescript
+interface FrameResult {
+  detected: MarkerPose[];  // visible in this frame
+  lost: number[];          // IDs visible last frame, gone in this one
+}
+```
+
+`lost` is reported **exactly once**, on the frame a marker disappears — it does not repeat while the marker stays absent. Tracking already computes this transition internally, so exposing it saves every consumer from diffing successive results to recover it.
 
 `videoFrame` is a `Uint8ClampedArray` of RGBA pixels matching the width and height the state was created with — typically `ctx.getImageData(...).data`.
 
@@ -149,7 +164,7 @@ Both take an optional output buffer — supply one in hot paths to avoid allocat
 
 ### Types
 
-`ARToolKitState`, `MarkerPose`, `TrackedMarkerState`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary.
+`ARToolKitState`, `MarkerPose`, `FrameResult`, `TrackedMarkerState`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary.
 
 ```typescript
 interface MarkerPose {
@@ -185,7 +200,7 @@ A shared helper for this is under consideration for a future release.
 
 Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is tracked in [issues](https://github.com/AR-js-org/artoolkit5-ts/issues).
 
-**v0.1** — lifecycle (done), packaging, marker-lost reporting from `processFrame`, tests and CI.
+**v0.1** — lifecycle (done), packaging (done), marker-lost reporting from `processFrame` (done), tests and CI.
 
 **Later** — `configureDetector`, barcode markers, a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
 

@@ -81,8 +81,13 @@ async function main(): Promise<void> {
         const pixels = grabFrame();
         if (!pixels) return;
 
-        const [marker] = processFrame(state, pixels);
-        showMarker(scene.cube, marker);
+        const { detected, lost } = processFrame(state, pixels);
+
+        if (lost.length > 0) {
+            console.log('marker lost:', lost.join(', '));
+        }
+
+        showMarker(scene.cube, detected[0]);
         scene.renderer.render(scene.scene, scene.camera);
     });
 }
