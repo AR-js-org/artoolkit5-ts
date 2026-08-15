@@ -32,6 +32,7 @@
  */
 
 import { ARToolKitState } from './domain';
+import { assertNotDisposed } from './errors';
 
 const GL_MATRIX_LENGTH = 16;
 
@@ -41,9 +42,12 @@ const GL_MATRIX_LENGTH = 16;
  *
  * NOTE: unlike `getTransform`, which returns a heap pointer, this returns the
  * matrix directly. That asymmetry is unverified against the C++ source — see
- * `docs/issues/08-verify-camera-lens.md` before relying on it.
+ * issue #10 before relying on it.
+ *
+ * @throws {ARToolKitError} if the state has been disposed.
  */
 export function getCameraProjectionMatrix(state: ARToolKitState): Float64Array {
+    assertNotDisposed(state, 'getCameraProjectionMatrix');
     return state.core.getCameraLens();
 }
 

@@ -1,5 +1,5 @@
 /*
- *  markers.ts
+ *  errors.ts
  *  artoolkit5-ts
  *
  *  This file is part of artoolkit5-ts - AR-js-org.
@@ -31,23 +31,39 @@
  *
  */
 
-import { addMarkerFromUrl } from '@ar-js-org/artoolkit5-wasm';
 import { ARToolKitState } from './domain';
-import { assertNotDisposed } from './errors';
 
 /**
- * Downloads a pattern file (`.patt`), writes it to the WASM virtual file system
- * and registers it with the ARToolKit core.
+ * Error thrown by this library.
  *
- * The returned ID is assigned by the C++ engine and must be passed to
- * `trackMarker` before the marker will be tracked. Never hardcode it.
- *
- * @throws {ARToolKitError} if the state has been disposed.
+ * Distinct from a plain `Error` so callers can tell a misuse of this API apart
+ * from a failure inside the WASM module or the host application.
  */
-export async function loadPatternMarker(
-    state: ARToolKitState,
-    markerUrl: string
-): Promise<number> {
-    assertNotDisposed(state, 'loadPatternMarker');
-    return addMarkerFromUrl(state.mod, state.core, markerUrl);
+export class ARToolKitError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ARToolKitError';
+
+        // Restores the prototype chain, which is lost when subclassing built-ins
+        // compiled to ES5 targets. Without it `instanceof ARToolKitError` fails.
+        Object.setPrototypeOf(this, ARToolKitError.prototype);
+    }
+}
+
+/**
+ * Throws if the state has been disposed.
+ *
+ * Every public operation calls this first. Without it, using a disposed state
+ * reaches freed WASM memory and fails somewhere inside the module, where the
+ * error says nothing about the actual mistake.
+ *
+ * @param operation Name of the calling function, used in the message.
+ */
+export function assertNotDisposed(state: ARToolKitState, operation: string): void {
+    if (state.disposed) {
+        throw new ARToolKitError(
+            `${operation} was called on a disposed ARToolKitState. ` +
+            'Create a new one with createARToolKitState().'
+        );
+    }
 }
