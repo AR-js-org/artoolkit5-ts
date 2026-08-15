@@ -41,8 +41,9 @@ const GL_MATRIX_LENGTH = 16;
  * `camera_para.dat`, accounting for real lens distortion.
  *
  * NOTE: unlike `getTransform`, which returns a heap pointer, this returns the
- * matrix directly. That asymmetry is unverified against the C++ source — see
- * issue #10 before relying on it.
+ * matrix directly. That asymmetry is unverified against the C++ source. See
+ * "spike: verify what getCameraLens() actually returns":
+ * https://github.com/AR-js-org/artoolkit5-ts/issues/10
  *
  * @throws {ARToolKitError} if the state has been disposed.
  */
