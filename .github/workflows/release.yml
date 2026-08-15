@@ -1,0 +1,85 @@
+name: Release
+
+# Publishing is triggered by publishing a GitHub Release, so the release notes
+# and the npm version are created in one deliberate act. A tag push would also
+# work, but an accidental or mistyped tag would publish immediately, and npm
+# versions cannot be replaced once taken.
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Required for npm provenance: it mints the OIDC token that lets npm
+      # attest which workflow run and commit produced the tarball.
+      id-token: write
+
+    steps:
+      - name: Checkout the released commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The release tag is the only statement of intent about which version is
+      # being published; package.json is what npm actually uses. If they
+      # disagree the wrong version ships, and npm does not allow a published
+      # version to be replaced or reused.
+      - name: Verify the version matches the release tag
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG_VERSION="${TAG#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Release tag is $TAG (version $TAG_VERSION) but package.json says $PKG_VERSION."
+            echo "Update package.json, or retag, so the two agree. Nothing has been published."
+            exit 1
+          fi
+          echo "Publishing version $PKG_VERSION."
+
+      # A release must not be able to publish something the branch protections
+      # would have rejected, so the full check suite runs again here.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Show what will be published
+        run: npm pack --dry-run
+
+      # --access public is required for the first publish of a scoped package;
+      # npm otherwise defaults it to restricted and fails on a free account.
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summarise
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          NAME="$(node -p "require('./package.json').name")"
+          {
+            echo "### Published"
+            echo ""
+            echo "\`$NAME@$VERSION\` — https://www.npmjs.com/package/$NAME/v/$VERSION"
+            echo ""
+            echo "Built with provenance from commit \`${{ github.sha }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"

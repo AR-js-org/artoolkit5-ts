@@ -42,7 +42,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "dev": "vite",
@@ -50,7 +51,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "release-notes": "node scripts/release-notes.mjs"
   },
   "dependencies": {
     "@ar-js-org/artoolkit5-wasm": "^0.1.3"

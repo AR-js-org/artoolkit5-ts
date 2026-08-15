@@ -228,6 +228,17 @@ The suite is validated by mutation: deliberately breaking the collection order, 
 
 Branch from `dev`; `main` holds release-ready code only. Commits follow [Conventional Commits](https://www.conventionalcommits.org/). Contributor guidance is in [`AGENTS.md`](AGENTS.md).
 
+### Releasing
+
+Publishing is automated. Creating a GitHub Release triggers a workflow that re-runs typecheck, tests and build, then publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements) — so the package carries a verifiable link back to the commit and workflow run that produced it.
+
+1. Set the version in `package.json`.
+2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add a fresh `## [Unreleased]` above it, and update the link definitions. `npm run release-notes` prints the Conventional Commits since the last tag, grouped by type, as a starting point.
+3. Merge to `main`.
+4. Create a GitHub Release tagged `vX.Y.Z`.
+
+The workflow refuses to publish if the tag and `package.json` disagree — npm does not allow a published version to be replaced, so a mismatch would be unrecoverable.
+
 ## 📄 Licence
 
 MIT — see [LICENSE](LICENSE).
