@@ -230,14 +230,21 @@ Branch from `dev`; `main` holds release-ready code only. Commits follow [Convent
 
 ### Releasing
 
-Publishing is automated. Creating a GitHub Release triggers a workflow that re-runs typecheck, tests and build, then publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements) — so the package carries a verifiable link back to the commit and workflow run that produced it.
+Releases are cut by the **Release** workflow, run manually from the Actions tab with the version to publish (without a leading `v`, e.g. `0.1.0`).
 
-1. Set the version in `package.json`.
-2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, add a fresh `## [Unreleased]` above it, and update the link definitions. `npm run release-notes` prints the Conventional Commits since the last tag, grouped by type, as a starting point.
-3. Merge to `main`.
-4. Create a GitHub Release tagged `vX.Y.Z`.
+Given that, it does everything else: runs typecheck, tests and build, sets the version, promotes the changelog, derives release notes from the commits, commits, tags `vX.Y.Z`, creates the GitHub Release and publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements) — so the package carries a verifiable link back to the commit and workflow run that built it.
 
-The workflow refuses to publish if the tag and `package.json` disagree — npm does not allow a published version to be replaced, so a mismatch would be unrecoverable.
+**Run it with `dry_run` first.** That performs every check and prints the notes and the tarball contents without tagging, committing or publishing. It is the only way to rehearse: npm never allows a published version to be replaced.
+
+Before running for real, the workflow refuses to start unless:
+
+- the version is valid semver, not already tagged, and not already on npm
+- the branch is `main`
+- the repository is public — npm will not generate provenance from a private repository
+
+Preparing a release means writing the changelog. Add entries to `## [Unreleased]` as you go; the workflow renames that heading to the released version and opens a fresh one. Anything between `<!-- promote:strip -->` markers is dropped during promotion, so notes meant only for editors do not survive into a released section. `npm run release-notes` prints the Conventional Commits since the last tag if you want to see what has accumulated.
+
+It is a single workflow rather than a "create release" and a "publish" pair because a Release created with the default `GITHUB_TOKEN` does not trigger other workflows — GitHub blocks that to prevent recursion, so the second one would silently never fire.
 
 ## 📄 Licence
 
