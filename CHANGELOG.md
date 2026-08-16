@@ -29,11 +29,13 @@ anything here that should not survive into a released section.
 - Vitest suite covering the matrix maths, the visibility state machine and the
   dispose lifecycle, running without WASM or a browser against a mocked core.
 - CI on Node 22 and 24: typecheck, test, build, and a packaging check.
-- Release workflow publishing to npm with provenance when a GitHub Release is
-  published, re-running the checks first and refusing to publish when
-  `package.json` disagrees with the release tag.
+- Release workflow, run manually with a version. It runs the checks, sets the
+  version, promotes this changelog, derives notes from the commits, tags,
+  creates the GitHub Release and publishes to npm with provenance. A `dry_run`
+  input rehearses all of it without tagging or publishing.
 - `scripts/release-notes.mjs`, which groups Conventional Commits since the
-  previous tag so release notes reflect what actually landed.
+  previous tag so release notes reflect what actually landed, and
+  `scripts/promote-changelog.mjs`, which promotes the Unreleased section.
 - Webcam example: camera to Three.js cube overlay.
 - This changelog.
 
