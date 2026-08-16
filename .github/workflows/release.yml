@@ -40,6 +40,11 @@ jobs:
           # previous tag, and a shallow clone has neither the tags nor the log.
           fetch-depth: 0
 
+      - name: Ensure releases run from main
+        if: ${{ !inputs.dry_run && github.ref_name != 'main' }}
+        run: |
+          echo "::error::Release workflow must be run from the main branch (current: ${GITHUB_REF_NAME})."
+          exit 1
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
