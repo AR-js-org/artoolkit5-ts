@@ -7,13 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- promote:strip -->
-Nothing has been published yet. Everything below ships in the first release.
-
-The release workflow promotes this section automatically; this note is removed
-when it does. Everything between the `promote:strip` markers is dropped, so put
-anything here that should not survive into a released section.
-<!-- /promote:strip -->
+## [0.1.0] - 2026-08-16
 
 ### Added
 
@@ -67,4 +61,5 @@ Pattern markers only. Barcode support is planned; NFT is out of scope for this
 project. Worker compatibility is untested — nothing in `src/` touches the DOM,
 which is necessary but not proof.
 
-[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/commits/dev
+[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/AR-js-org/artoolkit5-ts/releases/tag/v0.1.0
