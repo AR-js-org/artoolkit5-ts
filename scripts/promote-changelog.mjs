@@ -61,6 +61,20 @@ if (!unreleasedHeading.test(text)) {
     process.exit(1);
 }
 
+// Promotion always leaves a fresh empty Unreleased section behind, so running
+// it twice for the same version succeeds and produces two headings for that
+// version, the second one empty. The realistic way in is promoting by hand and
+// then letting the release workflow promote again.
+if (new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`, 'm').test(text)) {
+    console.error(
+        `${CHANGELOG} already has a "## [${version}]" section. ` +
+        'Promoting again would add a second, empty one.\n' +
+        'The release workflow promotes the changelog itself — it does not need ' +
+        'to be done by hand first.'
+    );
+    process.exit(1);
+}
+
 // Content between promote:strip markers is guidance for whoever is editing the
 // Unreleased section, not part of the release record. Matching explicit markers
 // rather than the prose itself means rewording the note cannot break this.
