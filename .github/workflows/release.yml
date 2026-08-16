@@ -68,6 +68,22 @@ jobs:
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      # npm will not generate provenance for a package built in a private
+      # repository. Left unchecked that surfaces at the publish step, by which
+      # point the version commit, the tag and the GitHub Release have all been
+      # pushed — leaving a release with no package behind it and manual cleanup
+      # before it can be retried. Failing here costs nothing instead.
+      - name: Ensure the repository is public
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$(gh repo view "${{ github.repository }}" --json isPrivate --jq .isPrivate)" = "true" ]; then
+            echo "::error::${{ github.repository }} is private, and npm cannot generate provenance from a private repository. Make it public, or remove --provenance from the publish step."
+            exit 1
+          fi
+          echo "Repository is public; provenance can be generated."
+
       - name: Install dependencies
         run: npm ci
 
@@ -91,8 +107,20 @@ jobs:
       - name: Build
         run: npm run build
 
+      # `npm version` refuses to set a version to the one already in
+      # package.json, exiting with "Version not changed". That is the normal
+      # state for a first release, where the version was set by hand, so the
+      # bump has to be conditional or the release cannot proceed at all.
       - name: Set the package version
-        run: npm version "$VERSION" --no-git-tag-version
+        run: |
+          CURRENT="$(node -p "require('./package.json').version")"
+
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "package.json is already at $VERSION; nothing to bump."
+          else
+            echo "Bumping $CURRENT -> $VERSION."
+            npm version "$VERSION" --no-git-tag-version
+          fi
 
       - name: Promote the changelog
         run: node scripts/promote-changelog.mjs "$VERSION"
@@ -127,7 +155,16 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 
           git add package.json package-lock.json CHANGELOG.md
-          git commit -m "chore(release): $VERSION"
+
+          # With the version already set by hand and the changelog promoted in
+          # an earlier commit, there may be nothing left to record. `git commit`
+          # treats that as an error, so tag what is already there instead.
+          if git diff --staged --quiet; then
+            echo "No release changes to commit; tagging the current commit."
+          else
+            git commit -m "chore(release): $VERSION"
+          fi
+
           git tag -a "v$VERSION" -m "Release $VERSION"
 
           git push origin HEAD:"${GITHUB_REF_NAME}"
