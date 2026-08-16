@@ -89,8 +89,7 @@ versions.forEach((current, index) => {
     );
 });
 
-// Drop every existing definition; the block above replaces them wholesale.
-text = text.replace(/^\[[^\]]+\]:.*(\r?\n)?/gm, '');
+text = text.replace(/^\[(?:Unreleased|\d+\.\d+\.\d+[^\]]*)\]:.*(\r?\n)?/gm, '');
 
 // Stripping blocks can leave runs of blank lines behind.
 text = text.replace(/(\r?\n){3,}/g, '$1$1');
