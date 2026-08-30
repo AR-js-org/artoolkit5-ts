@@ -1,3 +1,9 @@
+<!-- filed-as -->
+> **Filed as [AR-js-org/artoolkit5-constants#2](https://github.com/AR-js-org/artoolkit5-constants/issues/2) — closed.**
+> The GitHub issue is the live record; this draft is kept for its design
+> reasoning and is not updated. Draft numbering does not match issue
+> numbering — always follow the link rather than the filename.
+
 **Title:** Missing `AR_MATRIX_CODE_*` values and combined detection modes
 
 > **File this on `AR-js-org/artoolkit5-constants`, not on `artoolkit5-ts`.**
