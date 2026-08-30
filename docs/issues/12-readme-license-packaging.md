@@ -1,3 +1,9 @@
+<!-- filed-as -->
+> **Filed as [#14](https://github.com/AR-js-org/artoolkit5-ts/issues/14) — closed.**
+> The GitHub issue is the live record; this draft is kept for its design
+> reasoning and is not updated. Draft numbering does not match issue
+> numbering — always follow the link rather than the filename.
+
 **Title:** docs: add README, LICENSE, and fix package metadata for publication
 
 ## README

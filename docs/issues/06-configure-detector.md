@@ -1,3 +1,9 @@
+<!-- filed-as -->
+> **Filed as [#8](https://github.com/AR-js-org/artoolkit5-ts/issues/8) — open.**
+> The GitHub issue is the live record; this draft is kept for its design
+> reasoning and is not updated. Draft numbering does not match issue
+> numbering — always follow the link rather than the filename.
+
 **Title:** feat: add `configureDetector` with typed detection options
 
 ## Problem
