@@ -55,7 +55,7 @@
     "release-notes": "node scripts/release-notes.mjs"
   },
   "dependencies": {
-    "@ar-js-org/artoolkit5-wasm": "^0.1.3"
+    "@ar-js-org/artoolkit5-wasm": "^0.2.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
