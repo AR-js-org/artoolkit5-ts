@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `configureDetector(state, opts)` — detector tuning: `detectionMode`, `matrixCodeType`,
+  `threshold`, `thresholdMode`, `labelingMode`, `imageProcMode`, `pattRatio`,
+  `nearPlane`, `farPlane`. Applies only the keys present, so a later call can
+  adjust a single setting mid-session.
+- `@ar-js-org/artoolkit5-constants` as a direct dependency (`^0.3.0`). All ARToolKit5
+  integers used internally come from it — `src/config.ts` is the only module in
+  the codebase that imports one.
+
+### Changed
+
+- Depends on `@ar-js-org/artoolkit5-wasm@^0.2.0`, up from `^0.1.3`.
+
+### Notes
+
+`thresholdMode: 'auto-adaptive'` is not offered: the WebARKitLib build this
+library ships compiles that mode's implementation out, and passing it would
+silently degrade to `'manual'`.
+
 ## [0.1.0] - 2026-08-16
 
 ### Added

@@ -44,6 +44,18 @@ export interface CoreCalls {
     transMatCont: number[];
     /** Candidate indices passed to the from-scratch variant. */
     transMat: number[];
+    /** Most recent argument to each detector setter, keyed by method name. */
+    detector: {
+        setPatternDetectionMode?: number;
+        setMatrixCodeType?: number;
+        setThreshold?: number;
+        setThresholdMode?: number;
+        setLabelingMode?: number;
+        setImageProcMode?: number;
+        setPattRatio?: number;
+        setProjectionNearPlane?: number;
+        setProjectionFarPlane?: number;
+    };
 }
 
 export interface MockCoreOptions {
@@ -74,7 +86,13 @@ export function createMockState(options: MockCoreOptions = {}): {
     const visibleIds = options.visibleIds ?? [[]];
     const pose = options.pose ?? Array.from({ length: POSE_ELEMENT_COUNT }, (_, i) => i + 1);
 
-    const calls: CoreCalls = { teardown: 0, delete: 0, transMatCont: [], transMat: [] };
+    const calls: CoreCalls = {
+        teardown: 0,
+        delete: 0,
+        transMatCont: [],
+        transMat: [],
+        detector: {},
+    };
 
     // The library reads poses at `getTransform() >> 3`, so the pose is placed at
     // a known offset and that offset is returned as a byte address.
@@ -113,6 +131,33 @@ export function createMockState(options: MockCoreOptions = {}): {
             },
             getTransform: () => POSE_HEAP_INDEX * Float64Array.BYTES_PER_ELEMENT,
             getCameraLens: () => new Float64Array(16).fill(0.5),
+            setPatternDetectionMode: (mode: number) => {
+                calls.detector.setPatternDetectionMode = mode;
+            },
+            setMatrixCodeType: (type: number) => {
+                calls.detector.setMatrixCodeType = type;
+            },
+            setThreshold: (threshold: number) => {
+                calls.detector.setThreshold = threshold;
+            },
+            setThresholdMode: (mode: number) => {
+                calls.detector.setThresholdMode = mode;
+            },
+            setLabelingMode: (mode: number) => {
+                calls.detector.setLabelingMode = mode;
+            },
+            setImageProcMode: (mode: number) => {
+                calls.detector.setImageProcMode = mode;
+            },
+            setPattRatio: (ratio: number) => {
+                calls.detector.setPattRatio = ratio;
+            },
+            setProjectionNearPlane: (nearPlane: number) => {
+                calls.detector.setProjectionNearPlane = nearPlane;
+            },
+            setProjectionFarPlane: (farPlane: number) => {
+                calls.detector.setProjectionFarPlane = farPlane;
+            },
             teardown: () => {
                 calls.teardown += 1;
                 return 0;
