@@ -36,7 +36,7 @@ It is renderer-agnostic and DOM-free. It gives you marker poses as matrices; wha
 npm install @ar-js-org/artoolkit5-ts
 ```
 
-[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.1.3`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
+[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.2.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
 
 `three` is only needed to run the examples, not the library.
 
