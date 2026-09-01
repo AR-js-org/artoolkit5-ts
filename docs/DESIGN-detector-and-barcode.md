@@ -1,6 +1,6 @@
 # artoolkit5-ts — Detector Configuration & Barcode Markers Design
 
-**Status:** Approved, pending implementation
+**Status:** #8 (`configureDetector`) implemented; #9 (barcode markers) pending, blocked on #8 merging
 **Date:** 2026-08-30
 **Author:** Walter Perdan
 **Issues:** [#8](https://github.com/AR-js-org/artoolkit5-ts/issues/8) (`configureDetector`), [#9](https://github.com/AR-js-org/artoolkit5-ts/issues/9) (barcode markers)
