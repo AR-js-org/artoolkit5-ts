@@ -126,6 +126,28 @@ Registers a marker for tracking and allocates its reusable pose buffers.
 
 `markerWidth` defaults to `1.0`. Whatever unit you choose here is the unit all returned translations are expressed in — use millimetres if you want millimetres.
 
+### `configureDetector(state, opts)`
+
+Tunes the underlying detector. Only the keys you pass are changed — call it again later with a single option to adjust just that one, mid-session.
+
+```typescript
+configureDetector(state, {
+  detectionMode: 'matrix',       // 'color' | 'mono' | 'matrix' | 'color+matrix' | 'mono+matrix'
+  matrixCodeType: '4x4_bch_13_9_3',
+  thresholdMode: 'auto-otsu',    // 'manual' | 'auto-median' | 'auto-otsu' | 'auto-bracketing'
+  threshold: 100,                // 0–255, only meaningful when thresholdMode is 'manual'
+  labelingMode: 'black-region',  // 'white-region' | 'black-region' — the engine default
+  imageProcMode: 'frame',        // 'frame' | 'field'
+  pattRatio: 0.5,                // > 0 and < 1, exclusive
+  nearPlane: 1,
+  farPlane: 1000,
+});
+```
+
+An invalid string value or an out-of-range `threshold`/`pattRatio` throws `ARToolKitError` naming the option and, for string options, listing what it does accept — the engine itself would otherwise silently ignore the bad value and keep its previous setting, which is a much harder bug to notice.
+
+`'auto-adaptive'` threshold mode is not offered: the WebARKitLib build this library ships compiles that mode's implementation out, so passing it would silently degrade to `'manual'` while claiming to work.
+
 ### `processFrame(state, videoFrame)`
 
 Detects registered markers in one frame. Returns a `FrameResult`:
@@ -173,7 +195,7 @@ Both take an optional output buffer — supply one in hot paths to avoid allocat
 
 ### Types
 
-`ARToolKitState`, `MarkerPose`, `FrameResult`, `TrackedMarkerState`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary.
+`ARToolKitState`, `MarkerPose`, `FrameResult`, `TrackedMarkerState`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
 
 ```typescript
 interface MarkerPose {
@@ -206,8 +228,7 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## ⚠️ Limitations
 
-- **Pattern markers only.** Barcode/matrix markers are planned; NFT is out of scope for this project — see [Roadmap](#-roadmap).
-- **No detector tuning yet.** Threshold, threshold mode, labelling mode and related settings are exposed by the engine but not yet surfaced here.
+- **Pattern markers only, still.** `configureDetector` can switch the detector into a matrix-capable mode, but registering a barcode marker (`trackBarcodeMarker`) is not implemented yet; NFT is out of scope for this project — see [Roadmap](#-roadmap).
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
 
 ## 🗺️ Roadmap
@@ -216,7 +237,7 @@ Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is t
 
 **v0.1** (done) — lifecycle, packaging, marker-lost reporting from `processFrame`, a test suite and CI.
 
-**Next** — `configureDetector` for threshold and labelling settings, barcode markers, a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
+**Next** — `configureDetector` (done), barcode markers, a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
 
 **Out of scope** — NFT tracking. This project and `artoolkit5-wasm` cover pattern and barcode markers; NFT belongs to other projects in the ecosystem.
 

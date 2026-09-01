@@ -41,8 +41,18 @@ export type {
     TrackedMarkerState,
 } from './domain';
 
+export type {
+    DetectionMode,
+    DetectorOptions,
+    ImageProcMode,
+    LabelingMode,
+    MatrixCodeType,
+    ThresholdMode,
+} from './config';
+
 export { ARToolKitError } from './errors';
 export { createARToolKitState, disposeARToolKitState } from './init';
+export { configureDetector } from './detector';
 export { loadPatternMarker } from './markers';
 export { processFrame, trackMarker } from './tracking';
 export { arglCameraViewRHf, getCameraProjectionMatrix, transMatToGLMat } from './math';
