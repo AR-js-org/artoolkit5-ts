@@ -44,6 +44,12 @@ export interface CoreCalls {
     transMatCont: number[];
     /** Candidate indices passed to the from-scratch variant. */
     transMat: number[];
+    /**
+     * How many times the projection matrix was recomputed. `setProjectionNearPlane`
+     * and `setProjectionFarPlane` only assign a field — this is the only signal
+     * that `getCameraLens`'s cached result was actually refreshed.
+     */
+    recalculateCameraLens: number;
     /** Most recent argument to each detector setter, keyed by method name. */
     detector: {
         setPatternDetectionMode?: number;
@@ -91,6 +97,7 @@ export function createMockState(options: MockCoreOptions = {}): {
         delete: 0,
         transMatCont: [],
         transMat: [],
+        recalculateCameraLens: 0,
         detector: {},
     };
 
@@ -131,6 +138,9 @@ export function createMockState(options: MockCoreOptions = {}): {
             },
             getTransform: () => POSE_HEAP_INDEX * Float64Array.BYTES_PER_ELEMENT,
             getCameraLens: () => new Float64Array(16).fill(0.5),
+            recalculateCameraLens: () => {
+                calls.recalculateCameraLens += 1;
+            },
             setPatternDetectionMode: (mode: number) => {
                 calls.detector.setPatternDetectionMode = mode;
             },

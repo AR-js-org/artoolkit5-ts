@@ -138,6 +138,13 @@ export interface ARToolKitCore {
     /** Byte offset into `HEAPF64` holding the most recent 3x4 pose. */
     getTransform(): number;
     getCameraLens(): Float64Array;
+    /**
+     * Recomputes the cached projection matrix `getCameraLens` returns, from
+     * whatever `nearPlane`/`farPlane` currently hold. `setProjectionNearPlane`
+     * and `setProjectionFarPlane` only assign those fields — the matrix stays
+     * stale until this is called.
+     */
+    recalculateCameraLens(): void;
     setPatternDetectionMode(mode: number): void;
     setMatrixCodeType(type: number): void;
     setThreshold(threshold: number): void;

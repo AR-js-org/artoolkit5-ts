@@ -156,13 +156,22 @@ export const LABELING_MODES: Record<LabelingMode, number> = {
  * Looks up `value` in `table`, throwing a message that names the option and
  * lists what it does accept — the failure mode a raw `table[value]` cannot
  * give you, since an unknown key there is `undefined`, not an error.
+ *
+ * `Object.prototype.hasOwnProperty` guards against inherited keys: `table`
+ * is a plain object literal, so `value` arriving as e.g. `'toString'` from
+ * outside TypeScript's type safety (a plain-JS caller, JSON, a UI control)
+ * would otherwise resolve to `Object.prototype.toString` rather than
+ * `undefined`, silently passing a function into the setter instead of
+ * throwing.
  */
 export function lookUp<T extends string>(
     table: Record<T, number>,
     value: T,
     optionName: string
 ): number {
-    const resolved = table[value];
+    const resolved = Object.prototype.hasOwnProperty.call(table, value)
+        ? table[value]
+        : undefined;
     if (resolved === undefined) {
         const validValues = Object.keys(table).join(', ');
         throw new ARToolKitError(
