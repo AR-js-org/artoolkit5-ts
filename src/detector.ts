@@ -49,6 +49,10 @@ import { ARToolKitError, assertNotDisposed } from './errors';
  * Only the keys present in `opts` are applied — a partial call mid-session
  * changes just those settings and leaves everything else as it was.
  *
+ * Setting `nearPlane` or `farPlane` also recomputes the projection matrix
+ * `getCameraProjectionMatrix` returns, so a change is visible on the very
+ * next call rather than requiring a separate step to take effect.
+ *
  * @throws {ARToolKitError} if the state has been disposed, if a string option
  *   is not one of its documented values, or if `threshold` or `pattRatio` is
  *   outside the range the engine accepts.
@@ -93,16 +97,32 @@ export function configureDetector(state: ARToolKitState, opts: DetectorOptions):
     if (opts.farPlane !== undefined) {
         state.core.setProjectionFarPlane(opts.farPlane);
     }
+
+    // setProjectionNearPlane/FarPlane only assign the field; the projection
+    // matrix getCameraProjectionMatrix returns is a cache that stays stale
+    // until this recomputes it. Called once, and only when a plane actually
+    // changed — every other option is unrelated to the camera frustum, and
+    // recomputing on every call would make a call that touches neither plane
+    // do WASM work its own opts said nothing about.
+    if (opts.nearPlane !== undefined || opts.farPlane !== undefined) {
+        state.core.recalculateCameraLens();
+    }
 }
 
 /**
  * `arSetLabelingThresh` silently no-ops outside 0-255 (`ARToolKitCore.cpp:396`),
  * so an out-of-range value would otherwise fail without any indication why.
+ *
+ * `Number.isInteger` rather than a plain range comparison: `threshold < 0 ||
+ * threshold > 255` lets `NaN` through, since every comparison against `NaN`
+ * is `false`. It also rejects a fractional value the bound C++ setter takes
+ * as `int` — `Number.isInteger` catches both in one check, since `NaN` and
+ * every non-integer number both fail it.
  */
 function validateThreshold(threshold: number): number {
-    if (threshold < 0 || threshold > 255) {
+    if (!Number.isInteger(threshold) || threshold < 0 || threshold > 255) {
         throw new ARToolKitError(
-            `Invalid value ${threshold} for 'threshold'. Must be between 0 and 255 inclusive.`
+            `Invalid value ${threshold} for 'threshold'. Must be an integer between 0 and 255 inclusive.`
         );
     }
     return threshold;
@@ -112,11 +132,17 @@ function validateThreshold(threshold: number): number {
  * `arSetPattRatio` silently no-ops when `ratio <= 0` or `ratio >= 1`
  * (`ARToolKitCore.cpp:311`), so an out-of-range value would otherwise fail
  * without any indication why.
+ *
+ * `Number.isFinite` guards against `NaN` and `Infinity`, neither of which
+ * `pattRatio <= 0 || pattRatio >= 1` catches on its own — every comparison
+ * against `NaN` is `false`, so it passes both halves of that check. Unlike
+ * `threshold`, a fraction is exactly what this option expects, so this stays
+ * a finiteness check rather than an integer one.
  */
 function validatePattRatio(pattRatio: number): number {
-    if (pattRatio <= 0 || pattRatio >= 1) {
+    if (!Number.isFinite(pattRatio) || pattRatio <= 0 || pattRatio >= 1) {
         throw new ARToolKitError(
-            `Invalid value ${pattRatio} for 'pattRatio'. Must be greater than 0 and less than 1.`
+            `Invalid value ${pattRatio} for 'pattRatio'. Must be a finite number greater than 0 and less than 1.`
         );
     }
     return pattRatio;

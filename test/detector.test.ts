@@ -101,6 +101,12 @@ describe('configureDetector', () => {
         // 'auto-adaptive' is a real constant name, deliberately not in the
         // union — this is the case the omission is meant to catch.
         ['thresholdMode', 'auto-adaptive'],
+        // Every mapping table is a plain object literal, so an inherited key
+        // — arriving from outside TypeScript's type safety, e.g. a plain-JS
+        // caller — must not resolve through the prototype chain instead of
+        // failing the lookup.
+        ['detectionMode', 'toString'],
+        ['matrixCodeType', 'constructor'],
     ] as const)('throws ARToolKitError for an invalid %s', (option, value) => {
         const { state } = createMockState();
 
@@ -128,6 +134,21 @@ describe('configureDetector', () => {
             const { state } = createMockState();
             expect(() => configureDetector(state, { threshold })).toThrow(ARToolKitError);
         });
+
+        it('rejects NaN, which passes a plain range comparison unnoticed', () => {
+            // Every comparison against NaN is false, so `NaN < 0 || NaN > 255`
+            // evaluates to false — a naive range check lets it straight through.
+            const { state } = createMockState();
+            expect(() => configureDetector(state, { threshold: NaN })).toThrow(ARToolKitError);
+        });
+
+        it.each([100.5, Infinity])(
+            'rejects %s, since the bound setter takes an integer',
+            (threshold) => {
+                const { state } = createMockState();
+                expect(() => configureDetector(state, { threshold })).toThrow(ARToolKitError);
+            }
+        );
     });
 
     describe('pattRatio', () => {
@@ -144,6 +165,47 @@ describe('configureDetector', () => {
                 expect(() => configureDetector(state, { pattRatio })).toThrow(ARToolKitError);
             }
         );
+
+        it.each([NaN, Infinity, -Infinity])(
+            'rejects %s, which passes a plain range comparison unnoticed',
+            (pattRatio) => {
+                // Every comparison against NaN is false, so `NaN <= 0 || NaN >= 1`
+                // evaluates to false — a naive range check lets it straight through.
+                const { state } = createMockState();
+                expect(() => configureDetector(state, { pattRatio })).toThrow(ARToolKitError);
+            }
+        );
+    });
+
+    describe('projection matrix refresh', () => {
+        // setProjectionNearPlane/FarPlane only assign a field; recalculateCameraLens
+        // is what rebuilds the matrix getCameraProjectionMatrix returns. Forgetting
+        // this call is invisible in every other test here, since none of them
+        // inspect getCameraLens's return value — only the call count catches it.
+
+        it('recomputes the projection matrix when nearPlane changes', () => {
+            const { state, calls } = createMockState();
+            configureDetector(state, { nearPlane: 1 });
+            expect(calls.recalculateCameraLens).toBe(1);
+        });
+
+        it('recomputes the projection matrix when farPlane changes', () => {
+            const { state, calls } = createMockState();
+            configureDetector(state, { farPlane: 1000 });
+            expect(calls.recalculateCameraLens).toBe(1);
+        });
+
+        it('recomputes exactly once when both planes change in the same call', () => {
+            const { state, calls } = createMockState();
+            configureDetector(state, { nearPlane: 1, farPlane: 1000 });
+            expect(calls.recalculateCameraLens).toBe(1);
+        });
+
+        it('does not recompute for options unrelated to the camera frustum', () => {
+            const { state, calls } = createMockState();
+            configureDetector(state, { threshold: 100, labelingMode: 'white-region' });
+            expect(calls.recalculateCameraLens).toBe(0);
+        });
     });
 
     it('throws once the state is disposed', () => {
