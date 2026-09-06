@@ -40,6 +40,7 @@
 
 import * as THREE from 'three';
 import {
+    configureDetector,
     createARToolKitState,
     getCameraProjectionMatrix,
     loadPatternMarker,
@@ -47,6 +48,7 @@ import {
     trackMarker,
     type ARToolKitState,
     type MarkerPose,
+    type ThresholdMode,
 } from '../../src/index';
 
 // Vite resolves this to a hashed asset URL at build time; the WASM loader
@@ -59,6 +61,13 @@ const FRAME_HEIGHT = 480;
 const MARKER_WIDTH = 1.0;
 const CAMERA_PARAM_URL = './data/camera_para.dat';
 const MARKER_PATTERN_URL = './data/patt.hiro';
+
+// ARToolKitCore's own C++ defaults (ARToolKitCore.cpp constructor).
+const DEFAULT_THRESHOLD = 100;
+const DEFAULT_NEAR_PLANE = 0.0001;
+const DEFAULT_FAR_PLANE = 1000;
+
+const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto-median', 'auto-otsu', 'auto-bracketing'];
 
 async function main(): Promise<void> {
     const stage = getStage();
@@ -76,6 +85,7 @@ async function main(): Promise<void> {
     trackMarker(state, markerId, MARKER_WIDTH);
 
     const scene = createScene(stage, state);
+    createControlPanel(state, scene.camera);
 
     renderContinuously(() => {
         const pixels = grabFrame();
@@ -192,6 +202,116 @@ function createCube(): THREE.Mesh {
     cube.frustumCulled = false;
     cube.visible = false;
     return cube;
+}
+
+/**
+ * Demonstrates `configureDetector` with two groups of controls, chosen
+ * deliberately rather than exposing every option:
+ *
+ * - Threshold mode/value: the option most likely to matter in practice —
+ *   detection reliability under real lighting lives or dies on this.
+ * - Near/far plane: the one option whose correctness this repo's test suite
+ *   cannot verify, since every test runs against a mocked core.
+ *   `configureDetector` recomputes ARToolKit's cached projection matrix, but
+ *   Three.js keeps its own copy — `camera.projectionMatrix` has to be
+ *   re-read from `getCameraProjectionMatrix` afterwards, same as any real
+ *   consumer would need to. Set a small `farPlane` and Apply: the cube
+ *   should clip out of view, which is the real-engine proof no mocked test
+ *   can give.
+ *
+ * detectionMode/matrixCodeType are omitted: nothing here can detect a
+ * barcode marker until #9 lands. labelingMode and the remaining options are
+ * omitted to keep this panel to what is worth demonstrating.
+ */
+function createControlPanel(state: ARToolKitState, camera: THREE.Camera): void {
+    const panel = document.createElement('div');
+    panel.style.position = 'fixed';
+    panel.style.top = '12px';
+    panel.style.right = '12px';
+    panel.style.zIndex = '10';
+    panel.style.padding = '10px 12px';
+    panel.style.background = 'rgba(0, 0, 0, 0.6)';
+    panel.style.color = '#fff';
+    panel.style.font = '12px sans-serif';
+    panel.style.borderRadius = '4px';
+    panel.style.display = 'flex';
+    panel.style.flexDirection = 'column';
+    panel.style.gap = '8px';
+    document.body.appendChild(panel);
+
+    addThresholdControls(panel, state);
+    addProjectionPlaneControls(panel, state, camera);
+}
+
+function addThresholdControls(panel: HTMLElement, state: ARToolKitState): void {
+    const modeSelect = document.createElement('select');
+    for (const mode of THRESHOLD_MODES) {
+        const option = document.createElement('option');
+        option.value = mode;
+        option.textContent = mode;
+        modeSelect.appendChild(option);
+    }
+    modeSelect.value = 'manual';
+    modeSelect.onchange = () => {
+        configureDetector(state, { thresholdMode: modeSelect.value as ThresholdMode });
+    };
+
+    const thresholdInput = document.createElement('input');
+    thresholdInput.type = 'range';
+    thresholdInput.min = '0';
+    thresholdInput.max = '255';
+    thresholdInput.value = String(DEFAULT_THRESHOLD);
+    // Only visible in 'manual' mode — the value is still stored otherwise,
+    // ARToolKit just does not consult it.
+    thresholdInput.oninput = () => {
+        configureDetector(state, { threshold: Number(thresholdInput.value) });
+    };
+
+    panel.appendChild(labelled('threshold mode', modeSelect));
+    panel.appendChild(labelled('threshold (manual mode only)', thresholdInput));
+}
+
+function addProjectionPlaneControls(
+    panel: HTMLElement,
+    state: ARToolKitState,
+    camera: THREE.Camera
+): void {
+    const nearInput = document.createElement('input');
+    nearInput.type = 'number';
+    nearInput.step = 'any';
+    nearInput.value = String(DEFAULT_NEAR_PLANE);
+
+    const farInput = document.createElement('input');
+    farInput.type = 'number';
+    farInput.step = 'any';
+    farInput.value = String(DEFAULT_FAR_PLANE);
+
+    const applyButton = document.createElement('button');
+    applyButton.textContent = 'Apply near/far plane';
+    applyButton.onclick = () => {
+        configureDetector(state, {
+            nearPlane: Number(nearInput.value),
+            farPlane: Number(farInput.value),
+        });
+
+        // configureDetector already refreshed ARToolKit's cached matrix;
+        // Three.js holds its own copy, so it needs re-reading too.
+        camera.projectionMatrix.fromArray(getCameraProjectionMatrix(state));
+    };
+
+    panel.appendChild(labelled('near plane', nearInput));
+    panel.appendChild(labelled('far plane', farInput));
+    panel.appendChild(applyButton);
+}
+
+function labelled(text: string, control: HTMLElement): HTMLElement {
+    const wrapper = document.createElement('label');
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.gap = '2px';
+    wrapper.textContent = text;
+    wrapper.appendChild(control);
+    return wrapper;
 }
 
 function showMarker(cube: THREE.Mesh, marker: MarkerPose | undefined): void {
