@@ -31,8 +31,8 @@
  *
  */
 
-import { ARToolKitState, FrameResult, MarkerPose, TrackedMarkerState } from './domain';
-import { assertNotDisposed } from './errors';
+import { ARToolKitState, FrameResult, MarkerPose, MarkerType, TrackedMarkerState } from './domain';
+import { ARToolKitError, assertNotDisposed } from './errors';
 import { arglCameraViewRHf, transMatToGLMat } from './math';
 
 /** Elements in ARToolKit's 3x4 pose matrix. */
@@ -60,7 +60,8 @@ const glMatrixScratch = new Float32Array(16);
  * @param pattId ID returned by `loadPatternMarker`.
  * @param markerWidth Physical marker width; the unit chosen here is the unit
  *   all returned translations are expressed in.
- * @throws {ARToolKitError} if the state has been disposed.
+ * @throws {ARToolKitError} if the state has been disposed, or if `pattId` is
+ *   already registered as a barcode marker.
  */
 export function trackMarker(
     state: ARToolKitState,
@@ -68,9 +69,61 @@ export function trackMarker(
     markerWidth: number = 1.0
 ): void {
     assertNotDisposed(state, 'trackMarker');
+    registerMarker(state, pattId, 'pattern', markerWidth);
+}
 
-    state.markers[pattId] = {
-        id: pattId,
+/**
+ * Registers a barcode (matrix code) marker for tracking.
+ *
+ * Unlike a pattern marker, this involves no loading: the engine reads the ID
+ * directly off the marker's geometry, so there is no file to fetch and
+ * nothing to register with the C++ core first. Registering it here is all
+ * that is needed — which is why this is `trackBarcodeMarker`, not
+ * `loadBarcodeMarker`.
+ *
+ * Detecting a barcode marker also requires `configureDetector` to have put
+ * the engine into a matrix-capable `detectionMode` (`'matrix'`,
+ * `'color+matrix'`, or `'mono+matrix'`); this function only registers the ID.
+ *
+ * @param barcodeId The ID encoded in the marker itself — this is not
+ *   assigned by the engine, unlike a pattern marker's ID.
+ * @param markerWidth Physical marker width; the unit chosen here is the unit
+ *   all returned translations are expressed in.
+ * @throws {ARToolKitError} if the state has been disposed, or if `barcodeId`
+ *   is already registered as a pattern marker.
+ */
+export function trackBarcodeMarker(
+    state: ARToolKitState,
+    barcodeId: number,
+    markerWidth: number = 1.0
+): void {
+    assertNotDisposed(state, 'trackBarcodeMarker');
+    registerMarker(state, barcodeId, 'barcode', markerWidth);
+}
+
+/**
+ * Shared by `trackMarker` and `trackBarcodeMarker`: both families share one
+ * integer ID space, so registering an ID under one type must not silently
+ * overwrite a registration of the other.
+ *
+ * @throws {ARToolKitError} if `id` is already registered under a different type.
+ */
+function registerMarker(
+    state: ARToolKitState,
+    id: number,
+    type: MarkerType,
+    markerWidth: number
+): void {
+    const existing = state.markers[id];
+    if (existing && existing.type !== type) {
+        throw new ARToolKitError(
+            `Marker ID ${id} is already registered as a ${existing.type} marker.`
+        );
+    }
+
+    state.markers[id] = {
+        id,
+        type,
         markerWidth,
         inPrevious: false,
         inCurrent: false,
@@ -141,6 +194,7 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
 
         detected.push({
             id: tracked.id,
+            type: tracked.type,
             matrix: tracked.matrix,
             matrixGL: tracked.matrixGL,
         });

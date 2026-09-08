@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>artoolkit5-ts — barcode marker</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 24px;
+      }
+      .marker-reference {
+        margin-top: 16px;
+      }
+      .marker-reference img {
+        width: 120px;
+        height: 120px;
+        image-rendering: pixelated;
+        border: 1px solid #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <p><a href="/examples/index.html">&larr; All examples</a></p>
+    <div id="app"></div>
+    <div class="marker-reference">
+      <p>Print this marker (matrix code, ID 5) or display it on a second screen:</p>
+      <img src="./data/marker_05_3x3.jpg" alt="3x3 matrix code marker, ID 5" />
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

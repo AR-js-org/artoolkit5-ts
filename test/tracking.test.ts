@@ -32,7 +32,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { processFrame, trackMarker } from '../src/tracking';
+import { processFrame, trackBarcodeMarker, trackMarker } from '../src/tracking';
 import { ARToolKitError } from '../src/errors';
 import { createMockState } from './mock-core';
 
@@ -46,6 +46,7 @@ describe('trackMarker', () => {
 
         const tracked = state.markers[MARKER_ID];
         expect(tracked.id).toBe(MARKER_ID);
+        expect(tracked.type).toBe('pattern');
         expect(tracked.markerWidth).toBe(2.5);
         expect(tracked.matrix).toHaveLength(12);
         expect(tracked.matrixGL).toHaveLength(16);
@@ -61,6 +62,67 @@ describe('trackMarker', () => {
         const { state } = createMockState();
         state.disposed = true;
         expect(() => trackMarker(state, MARKER_ID)).toThrow(ARToolKitError);
+    });
+});
+
+describe('trackBarcodeMarker', () => {
+    it('registers a marker with its pose buffers, tagged as barcode', () => {
+        const { state } = createMockState();
+        trackBarcodeMarker(state, MARKER_ID, 2.5);
+
+        const tracked = state.markers[MARKER_ID];
+        expect(tracked.id).toBe(MARKER_ID);
+        expect(tracked.type).toBe('barcode');
+        expect(tracked.markerWidth).toBe(2.5);
+        expect(tracked.matrix).toHaveLength(12);
+        expect(tracked.matrixGL).toHaveLength(16);
+    });
+
+    it('defaults markerWidth to 1', () => {
+        const { state } = createMockState();
+        trackBarcodeMarker(state, MARKER_ID);
+        expect(state.markers[MARKER_ID].markerWidth).toBe(1);
+    });
+
+    it('throws once the state is disposed', () => {
+        const { state } = createMockState();
+        state.disposed = true;
+        expect(() => trackBarcodeMarker(state, MARKER_ID)).toThrow(ARToolKitError);
+    });
+});
+
+describe('marker type collisions', () => {
+    // Pattern and barcode markers share one integer ID space (getMarkerInfo
+    // does not distinguish them), so registering an ID under one type must
+    // not silently overwrite a registration of the other.
+
+    it('trackBarcodeMarker throws if the ID is already a pattern marker', () => {
+        const { state } = createMockState();
+        trackMarker(state, MARKER_ID);
+
+        expect(() => trackBarcodeMarker(state, MARKER_ID)).toThrow(
+            /Marker ID 7 is already registered as a pattern marker/
+        );
+    });
+
+    it('trackMarker throws if the ID is already a barcode marker', () => {
+        const { state } = createMockState();
+        trackBarcodeMarker(state, MARKER_ID);
+
+        expect(() => trackMarker(state, MARKER_ID)).toThrow(
+            /Marker ID 7 is already registered as a barcode marker/
+        );
+    });
+
+    it('re-registering the same ID under the same type is not a collision', () => {
+        const { state } = createMockState();
+        trackMarker(state, MARKER_ID, 1.0);
+        expect(() => trackMarker(state, MARKER_ID, 2.0)).not.toThrow();
+        expect(state.markers[MARKER_ID].markerWidth).toBe(2.0);
+
+        trackBarcodeMarker(state, MARKER_ID + 1, 1.0);
+        expect(() => trackBarcodeMarker(state, MARKER_ID + 1, 2.0)).not.toThrow();
+        expect(state.markers[MARKER_ID + 1].markerWidth).toBe(2.0);
     });
 });
 
@@ -146,6 +208,35 @@ describe('processFrame pose extraction', () => {
         const { detected } = processFrame(state, FRAME);
         expect(detected[0].matrixGL).toBeInstanceOf(Float32Array);
         expect(detected[0].matrix).toBeInstanceOf(Float64Array);
+    });
+});
+
+describe('processFrame type reporting', () => {
+    it('reports the type each marker was registered with', () => {
+        const { state } = createMockState({ visibleIds: [[MARKER_ID]] });
+        trackBarcodeMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+        expect(detected[0].type).toBe('barcode');
+    });
+
+    it('reports the correct type per marker when both families are detected in the same frame', () => {
+        // getMarkerInfo cannot distinguish the two families in a combined
+        // detection mode -- this is what proves `type` stays correct anyway,
+        // since it is read from the registry rather than the engine.
+        const PATTERN_ID = MARKER_ID;
+        const BARCODE_ID = MARKER_ID + 1;
+        const { state } = createMockState({ visibleIds: [[PATTERN_ID, BARCODE_ID]] });
+        trackMarker(state, PATTERN_ID);
+        trackBarcodeMarker(state, BARCODE_ID);
+
+        const { detected } = processFrame(state, FRAME);
+        const byId = Object.fromEntries(detected.map((m) => [m.id, m.type]));
+
+        expect(byId).toEqual({
+            [PATTERN_ID]: 'pattern',
+            [BARCODE_ID]: 'barcode',
+        });
     });
 });
 

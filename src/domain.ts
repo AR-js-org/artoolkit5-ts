@@ -38,6 +38,15 @@
  */
 
 /**
+ * Which family a registered marker belongs to.
+ *
+ * The two share one integer ID space: `getMarkerInfo` does not distinguish
+ * them (`idPatt`/`idMatrix` are not bound), so this is read from the
+ * registry rather than the engine. See `trackMarker` and `trackBarcodeMarker`.
+ */
+export type MarkerType = 'pattern' | 'barcode';
+
+/**
  * Detection result for a single marker in a single frame.
  *
  * `matrix` and `matrixGL` are views onto buffers owned by the tracker and
@@ -50,6 +59,7 @@
  */
 export interface MarkerPose {
     id: number;
+    type: MarkerType;
     /**
      * 3x4 row-major pose, exactly as ARToolKit produces it.
      *
@@ -90,6 +100,7 @@ export interface FrameResult {
 /** Per-marker tracking state, owned by {@link ARToolKitState}. */
 export interface TrackedMarkerState {
     id: number;
+    type: MarkerType;
     markerWidth: number;
     /** Visible in the previous frame — enables continuous tracking. */
     inPrevious: boolean;

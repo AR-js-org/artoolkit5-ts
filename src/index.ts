@@ -38,6 +38,7 @@ export type {
     FrameResult,
     MarkerInfo,
     MarkerPose,
+    MarkerType,
     TrackedMarkerState,
 } from './domain';
 
@@ -54,5 +55,5 @@ export { ARToolKitError } from './errors';
 export { createARToolKitState, disposeARToolKitState } from './init';
 export { configureDetector } from './detector';
 export { loadPatternMarker } from './markers';
-export { processFrame, trackMarker } from './tracking';
+export { processFrame, trackBarcodeMarker, trackMarker } from './tracking';
 export { arglCameraViewRHf, getCameraProjectionMatrix, transMatToGLMat } from './math';

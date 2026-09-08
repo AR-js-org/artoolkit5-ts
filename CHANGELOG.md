@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@ar-js-org/artoolkit5-constants` as a direct dependency (`^0.3.0`). All ARToolKit5
   integers used internally come from it — `src/config.ts` is the only module in
   the codebase that imports one.
+- `trackBarcodeMarker(state, barcodeId, markerWidth?)` — registers a barcode
+  (matrix code) marker. Unlike a pattern marker there is nothing to load first:
+  the ID is encoded in the marker's geometry, not assigned by the engine.
+- `MarkerType` (`'pattern' | 'barcode'`), on both `MarkerPose` and
+  `TrackedMarkerState`. Read from the registry rather than the engine — `getMarkerInfo`
+  cannot tell the two families apart — which is also why `trackMarker` and
+  `trackBarcodeMarker` now throw `ARToolKitError` if the ID they are given is
+  already registered under the other family, rather than silently overwriting it.
+- `examples/barcode/`, tracking a 3x3 matrix code marker. `examples/index.html`
+  now links to both examples.
 
 ### Changed
 
@@ -26,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 `thresholdMode: 'auto-adaptive'` is not offered: the WebARKitLib build this
 library ships compiles that mode's implementation out, and passing it would
 silently degrade to `'manual'`.
+
+Combined pattern+barcode detection (`'color+matrix'`/`'mono+matrix'`) is
+implemented and typed but not yet verified against the real engine — only
+single-family detection has been confirmed, in the two examples.
 
 ## [0.1.0] - 2026-08-16
 
