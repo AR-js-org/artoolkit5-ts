@@ -1,6 +1,6 @@
 # artoolkit5-ts — Detector Configuration & Barcode Markers Design
 
-**Status:** #8 (`configureDetector`) implemented; #9 (barcode markers) pending, blocked on #8 merging
+**Status:** #8 (`configureDetector`) implemented and merged. #9 (barcode markers) implemented for single-mode detection; combined-mode (`'color+matrix'`/`'mono+matrix'`) is unverified against the real engine — see §5 and Decision 10.
 **Date:** 2026-08-30
 **Author:** Walter Perdan
 **Issues:** [#8](https://github.com/AR-js-org/artoolkit5-ts/issues/8) (`configureDetector`), [#9](https://github.com/AR-js-org/artoolkit5-ts/issues/9) (barcode markers)
@@ -182,9 +182,9 @@ The suite runs against a **mocked core**. It can prove `detectionMode: 'matrix'`
 
 **Unit (mocked):** mapping correctness for every option; validation errors for every invalid input; absent keys invoke nothing; collision guards in both directions; `type` propagation through `processFrame`. Plus a test asserting the mapping tables match the constants package, so an upstream value change fails loudly rather than silently mis-detecting.
 
-**`examples/barcode/` (real engine):** the only place combined modes are confirmed. Runtime mode switching so `matrix` and `mono+matrix` can be compared against the same markers. Requires a printed or on-screen matrix marker matching the configured `matrixCodeType`.
+**`examples/barcode/` (real engine):** implemented, scoped to single-mode detection only (`detectionMode: 'matrix'`), against a real, verified `3x3` marker (ID 5, sourced from `WebARKitLib.rs`'s own test fixtures rather than hand-generated — getting a matrix marker's bit encoding wrong is not something a unit test would catch). This confirms barcode detection works end to end. It does **not** confirm combined-mode detection: no runtime mode switcher was built, and the example was deliberately kept to one family at a time.
 
-**Acceptance:** combined modes are documented as working only after that run. If they misbehave they are documented as unsupported and dropped from the union — non-breaking, since nothing has shipped.
+**Acceptance:** single-mode barcode detection is confirmed. Combined-mode detection is implemented and typed but **not yet run against the real engine** — narrower than originally planned. See Decision 10.
 
 ---
 
@@ -201,6 +201,7 @@ The suite runs against a **mocked core**. It can prove `detectionMode: 'matrix'`
 | 7 | `trackBarcodeMarker`, not `loadBarcodeMarker` | The name in #9; extending `trackMarker` | It performs no I/O and no C++ call — it is a registry operation, which is exactly what `trackMarker` is. Avoids the only synchronous `load*` in the API. |
 | 8 | Combined modes ship, verified in the example | Withhold until `idMatrix` is bound | Decision 3 makes `type` correct without `idMatrix`. Verification happens against the real engine before any claim is made. |
 | 9 | `labelingMode` re-included in scope, superseding Decision 6 | Leave it deferred to a follow-up issue now that it is unblocked | `artoolkit5-constants#6` shipped in `0.3.0`: `AR_LABELING_WHITE_REGION`, `AR_LABELING_BLACK_REGION`, `AR_DEFAULT_LABELING_MODE` are generated. The reason for the original exclusion no longer holds, and the mapping-table pattern already extends to it with no structural change — deferring further would only cost a second round-trip through this design. |
+| 10 | `examples/barcode/` scoped to single-mode detection, narrowing Decision 8 | Build the runtime mode switcher and verify combined modes now, as originally planned | A real, verified `3x3` marker became available (sourced from `WebARKitLib.rs`'s own test fixtures) partway through implementation, which unblocked single-mode verification immediately. Combined-mode verification needs a second marker, a mode-switching UI, and a second round of manual confirmation — a deliberately separate, smaller step rather than folding it into an already-large PR. Decision 8's claim ("verified in the example") is correspondingly narrower than first written: single-family detection is verified, combined-family detection is implemented and typed but not yet run against the real engine. |
 
 ---
 
@@ -208,7 +209,7 @@ The suite runs against a **mocked core**. It can prove `detectionMode: 'matrix'`
 
 | ID | Risk | Mitigation |
 |---|---|---|
-| R1 | Combined modes misbehave in the real engine | Verified in `examples/barcode/` before being documented as supported. Dropping them from the union is non-breaking. |
+| R1 | Combined modes misbehave in the real engine | **Open, per Decision 10.** `examples/barcode/` verifies single-family detection only; combined modes remain implemented and typed but unrun against the real engine. Dropping them from the union, if they turn out not to work, is still non-breaking — nothing depends on them yet. |
 | R2 | `type` is wrong if IDs are not unique | Uniqueness is enforced at registration, not assumed. Both registration paths guard. |
 | R3 | A constants upgrade changes an integer | Mapping tables asserted against the package in tests. Values are inlined at our build time, so shipped behaviour matches what was tested. |
 | R4 | `labelingMode` stays unavailable | **Resolved.** `artoolkit5-constants#6` shipped in `0.3.0`; `labelingMode` is in scope per Decision 9. |
@@ -218,11 +219,12 @@ The suite runs against a **mocked core**. It can prove `detectionMode: 'matrix'`
 
 ## 8. Follow-up Work
 
-All items below were open when this design was first written. All are now done, kept here as the record of what this design triggered elsewhere.
+Most items below were open when this design was first written and are now done, kept here as the record of what this design triggered elsewhere. One — combined-mode verification — is still genuinely open; see Decision 10.
 
 - ~~**artoolkit5-constants#6**~~ — done. Generated `arLabelingMode` and `arMarkerExtractionMode`; shipped in `0.3.0`.
 - ~~**artoolkit5-constants#2**~~ — done. Verified resolved by `0.2.0` and closed.
 - ~~**Correct #8 and #9**~~ — done. Stale `constants@0.1.0` rationale replaced, #9's `#06` reference fixed to #8, matrix type list expanded from six to eleven, #9's combined-mode risk replaced with the `getMarkerInfo` finding.
 - ~~**`docs/issues/*.md`**~~ — done. Each draft carries a header mapping it to its filed issue number.
+- ~~**`@ar-js-org/artoolkit5-wasm` bumped to `^0.2.0`**~~ — done (this repo), reaching `constants@0.3.0` and unblocking `labelingMode` — see Decision 9.
+- **Combined-mode verification (still open)** — run `'mono+matrix'` or `'color+matrix'` against a real pattern marker and a real barcode marker registered together, in the browser. Needs a second marker asset and a runtime mode switcher; deliberately not built in this pass — see Decision 10.
 - **Upstream (optional, still open)** — bind `idPatt`/`idMatrix`/`cfPatt`/`cfMatrix` in `artoolkit5-wasm` so pattern-vs-barcode could be read from the engine rather than derived. Not needed given Decision 3.
-- **`@ar-js-org/artoolkit5-wasm` bumped to `^0.2.0`** (this repo), reaching `constants@0.3.0` and unblocking `labelingMode` — see Decision 9.

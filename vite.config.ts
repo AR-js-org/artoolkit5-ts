@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 export default defineConfig({
   // Development server: serve examples in dev mode
   server: {
-    open: '/examples/webcam/index.html',
+    open: '/examples/index.html',
   },
 
   // `public/` holds assets for the dev server and examples. Copying them into

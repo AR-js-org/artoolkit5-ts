@@ -80,13 +80,13 @@ for (const id of lost) {
 }
 ```
 
-A complete working example lives in [`examples/webcam`](examples/webcam) — webcam capture, marker tracking and a Three.js cube overlay:
+Two complete working examples — webcam capture, marker tracking and a Three.js cube overlay:
 
 ```bash
 npm run dev
 ```
 
-You will need the [Hiro marker](https://commons.wikimedia.org/wiki/File:Hiro_marker_wikipedia.png) printed or on a second screen.
+[`examples/webcam`](examples/webcam) tracks a pattern marker; you will need the [Hiro marker](https://commons.wikimedia.org/wiki/File:Hiro_marker_wikipedia.png) printed or on a second screen. [`examples/barcode`](examples/barcode) tracks a matrix code marker instead — the marker image it needs ships in `examples/barcode/data/`.
 
 ## 🧠 Why functions instead of a controller class
 
@@ -125,6 +125,20 @@ Loading a marker does not start tracking it; pass the ID to `trackMarker`.
 Registers a marker for tracking and allocates its reusable pose buffers.
 
 `markerWidth` defaults to `1.0`. Whatever unit you choose here is the unit all returned translations are expressed in — use millimetres if you want millimetres.
+
+### `trackBarcodeMarker(state, barcodeId, markerWidth?)`
+
+Registers a barcode (matrix code) marker for tracking. Unlike a pattern marker, there is nothing to load first: the ID is encoded directly in the marker's geometry, so `barcodeId` is a value you choose when generating the marker, not one the engine assigns — pass it straight to this function.
+
+Detecting a barcode marker also requires `configureDetector` to have set a matrix-capable `detectionMode` (`'matrix'`, `'color+matrix'`, or `'mono+matrix'`) and a `matrixCodeType` matching the marker.
+
+Pattern and barcode markers share one integer ID space. Registering an ID under one family while it is already registered under the other throws `ARToolKitError` rather than silently overwriting the existing registration:
+
+```typescript
+trackBarcodeMarker(state, 7);
+trackMarker(state, 7);
+// ARToolKitError: Marker ID 7 is already registered as a barcode marker.
+```
 
 ### `configureDetector(state, opts)`
 
@@ -195,15 +209,18 @@ Both take an optional output buffer — supply one in hot paths to avoid allocat
 
 ### Types
 
-`ARToolKitState`, `MarkerPose`, `FrameResult`, `TrackedMarkerState`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
+`ARToolKitState`, `MarkerPose`, `FrameResult`, `TrackedMarkerState`, `MarkerType`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
 
 ```typescript
 interface MarkerPose {
   id: number;
+  type: 'pattern' | 'barcode';
   matrix: Float64Array;    // 3x4, row-major, as ARToolKit produces it
   matrixGL: Float32Array;  // 4x4, column-major, right-handed, WebGL-ready
 }
 ```
+
+`type` comes from the registry, not the engine: `getMarkerInfo` cannot distinguish a pattern marker from a barcode marker (`idPatt`/`idMatrix` are not bound), so it is read from whichever of `trackMarker`/`trackBarcodeMarker` registered that ID. That is also why the two share one ID space rather than two.
 
 ## 🖼️ Feeding frames from an ImageBitmap
 
@@ -228,7 +245,7 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## ⚠️ Limitations
 
-- **Pattern markers only, still.** `configureDetector` can switch the detector into a matrix-capable mode, but registering a barcode marker (`trackBarcodeMarker`) is not implemented yet; NFT is out of scope for this project — see [Roadmap](#-roadmap).
+- **Combined pattern+barcode detection is unverified.** `'color+matrix'`/`'mono+matrix'` are implemented and typed, but only single-mode detection — a pattern marker on its own, or a barcode marker on its own with `detectionMode: 'matrix'` — has been confirmed against the real engine, in `examples/webcam` and `examples/barcode` respectively. NFT is out of scope for this project — see [Roadmap](#-roadmap).
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
 
 ## 🗺️ Roadmap
@@ -237,7 +254,7 @@ Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is t
 
 **v0.1** (done) — lifecycle, packaging, marker-lost reporting from `processFrame`, a test suite and CI.
 
-**Next** — `configureDetector` (done), barcode markers, a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
+**Next** — `configureDetector` (done), single-mode barcode markers (done — see [Limitations](#-limitations) for what combined-mode detection still needs), a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
 
 **Out of scope** — NFT tracking. This project and `artoolkit5-wasm` cover pattern and barcode markers; NFT belongs to other projects in the ecosystem.
 

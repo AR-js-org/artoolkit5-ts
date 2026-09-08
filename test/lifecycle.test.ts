@@ -33,7 +33,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { disposeARToolKitState } from '../src/init';
-import { processFrame, trackMarker } from '../src/tracking';
+import { processFrame, trackBarcodeMarker, trackMarker } from '../src/tracking';
 import { getCameraProjectionMatrix } from '../src/math';
 import { loadPatternMarker } from '../src/markers';
 import { configureDetector } from '../src/detector';
@@ -79,6 +79,7 @@ describe('post-dispose guards', () => {
 
         expect(() => processFrame(state, new Uint8ClampedArray(16))).toThrow(ARToolKitError);
         expect(() => trackMarker(state, 7)).toThrow(ARToolKitError);
+        expect(() => trackBarcodeMarker(state, 8)).toThrow(ARToolKitError);
         expect(() => getCameraProjectionMatrix(state)).toThrow(ARToolKitError);
         expect(() => configureDetector(state, { threshold: 100 })).toThrow(ARToolKitError);
         await expect(loadPatternMarker(state, 'marker.patt')).rejects.toThrow(ARToolKitError);
