@@ -38,7 +38,15 @@
  * both, which is why this file — not `src/` — owns the canvas and the scene.
  */
 
-import * as THREE from 'three';
+import {
+    BoxGeometry,
+    type Camera,
+    Mesh,
+    MeshNormalMaterial,
+    PerspectiveCamera,
+    Scene,
+    WebGLRenderer,
+} from 'three';
 import {
     configureDetector,
     createARToolKitState,
@@ -160,23 +168,23 @@ function createFrameGrabber(video: HTMLVideoElement): () => Uint8ClampedArray | 
 }
 
 interface Stage {
-    renderer: THREE.WebGLRenderer;
-    scene: THREE.Scene;
-    camera: THREE.Camera;
-    cube: THREE.Mesh;
+    renderer: WebGLRenderer;
+    scene: Scene;
+    camera: Camera;
+    cube: Mesh;
 }
 
 function createScene(stage: HTMLElement, state: ARToolKitState): Stage {
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const renderer = new WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(FRAME_WIDTH, FRAME_HEIGHT);
     overlay(renderer.domElement, 1);
     stage.appendChild(renderer.domElement);
 
-    const scene = new THREE.Scene();
+    const scene = new Scene();
 
     // ARToolKit's projection matrix accounts for real lens distortion, which a
     // generic PerspectiveCamera cannot.
-    const camera = new THREE.PerspectiveCamera(60, FRAME_WIDTH / FRAME_HEIGHT, 0.1, 10000);
+    const camera = new PerspectiveCamera(60, FRAME_WIDTH / FRAME_HEIGHT, 0.1, 10000);
     camera.projectionMatrix.fromArray(getCameraProjectionMatrix(state));
     camera.matrixAutoUpdate = false;
     scene.add(camera);
@@ -187,13 +195,13 @@ function createScene(stage: HTMLElement, state: ARToolKitState): Stage {
     return { renderer, scene, camera, cube };
 }
 
-function createCube(): THREE.Mesh {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+function createCube(): Mesh {
+    const geometry = new BoxGeometry(1, 1, 1);
     geometry.translate(0, 0, 0.5); // sit on the marker plane rather than through it
 
-    const cube = new THREE.Mesh(
+    const cube = new Mesh(
         geometry,
-        new THREE.MeshNormalMaterial({ transparent: true, opacity: 0.8 })
+        new MeshNormalMaterial({ transparent: true, opacity: 0.8 })
     );
 
     cube.matrixAutoUpdate = false;
@@ -223,7 +231,7 @@ function createCube(): THREE.Mesh {
  * barcode marker until #9 lands. labelingMode and the remaining options are
  * omitted to keep this panel to what is worth demonstrating.
  */
-function createControlPanel(state: ARToolKitState, camera: THREE.Camera): void {
+function createControlPanel(state: ARToolKitState, camera: Camera): void {
     const panel = document.createElement('div');
     panel.style.position = 'fixed';
     panel.style.top = '12px';
@@ -274,7 +282,7 @@ function addThresholdControls(panel: HTMLElement, state: ARToolKitState): void {
 function addProjectionPlaneControls(
     panel: HTMLElement,
     state: ARToolKitState,
-    camera: THREE.Camera
+    camera: Camera
 ): void {
     const nearInput = document.createElement('input');
     nearInput.type = 'number';
@@ -314,7 +322,7 @@ function labelled(text: string, control: HTMLElement): HTMLElement {
     return wrapper;
 }
 
-function showMarker(cube: THREE.Mesh, marker: MarkerPose | undefined): void {
+function showMarker(cube: Mesh, marker: MarkerPose | undefined): void {
     cube.visible = marker !== undefined;
     if (!marker) return;
 

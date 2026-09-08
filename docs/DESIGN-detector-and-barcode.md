@@ -1,6 +1,6 @@
 # artoolkit5-ts — Detector Configuration & Barcode Markers Design
 
-**Status:** #8 (`configureDetector`) implemented and merged. #9 (barcode markers) implemented for single-mode detection; combined-mode (`'color+matrix'`/`'mono+matrix'`) is unverified against the real engine — see §5 and Decision 10.
+**Status:** #8 (`configureDetector`) implemented and merged. #9 (barcode markers) implemented for single-mode detection. #33 (combined-mode verification) designed and implemented, but **blocked**: combined modes cannot work until `artoolkit5-wasm` binds `idPatt`/`idMatrix` — see §9 Outcome.
 **Date:** 2026-08-30
 **Author:** Walter Perdan
 **Issues:** [#8](https://github.com/AR-js-org/artoolkit5-ts/issues/8) (`configureDetector`), [#9](https://github.com/AR-js-org/artoolkit5-ts/issues/9) (barcode markers)
@@ -226,5 +226,60 @@ Most items below were open when this design was first written and are now done, 
 - ~~**Correct #8 and #9**~~ — done. Stale `constants@0.1.0` rationale replaced, #9's `#06` reference fixed to #8, matrix type list expanded from six to eleven, #9's combined-mode risk replaced with the `getMarkerInfo` finding.
 - ~~**`docs/issues/*.md`**~~ — done. Each draft carries a header mapping it to its filed issue number.
 - ~~**`@ar-js-org/artoolkit5-wasm` bumped to `^0.2.0`**~~ — done (this repo), reaching `constants@0.3.0` and unblocking `labelingMode` — see Decision 9.
-- **Combined-mode verification (still open)** — run `'mono+matrix'` or `'color+matrix'` against a real pattern marker and a real barcode marker registered together, in the browser. Needs a second marker asset and a runtime mode switcher; deliberately not built in this pass — see Decision 10.
+- **Combined-mode verification** — design below, §9. Implementation tracked in [#33](https://github.com/AR-js-org/artoolkit5-ts/issues/33).
 - **Upstream (optional, still open)** — bind `idPatt`/`idMatrix`/`cfPatt`/`cfMatrix` in `artoolkit5-wasm` so pattern-vs-barcode could be read from the engine rather than derived. Not needed given Decision 3.
+
+---
+
+## 9. Combined-Mode Verification Design (Issue #33)
+
+Brainstormed with `/brainstorming` before implementation, per this project's convention. Full understanding-lock and incremental design walkthrough happened in conversation; this section is the persisted record.
+
+### Verified before designing, not assumed
+
+Went in suspecting `'color+matrix'` might be a non-starter, since this library hardcodes luma conversion (`CONVERT_TO_LUMA = true` in `tracking.ts`). Checked the C++ before letting that shape the design: `ARToolKitCore::passVideoData` computes luma **in addition to** retaining the full RGBA frame, and `detectMarker()` passes both to the engine (`buff.buff` = RGBA, `buff.buffLuma` = luma). Default `pixFormat` is `AR_PIXEL_FORMAT_RGBA`, matching what a browser's `getImageData()` provides, and `arPattGetID.c`'s color-extraction path explicitly handles `AR_PIXEL_FORMAT_RGBA`. So there is no structural reason `'color+matrix'` can't work through this wrapper — that hypothesis was wrong, corrected before it reached the design.
+
+Also confirmed: matrix-code (barcode) detection reads from a code path independent of the `COLOR`/`MONO` choice in `arPattGetID.c` — only the *pattern* half of detection is actually affected by which combined mode is selected. Whether the `.patt` reference format matches correctly under `COLOR` vs `MONO` extraction is not resolvable by reading more source; that is exactly what running the real test determines.
+
+### Design
+
+Extends `examples/barcode/` in place (no new example, no shared module between examples — each stays self-contained, matching #31's precedent):
+
+- Both markers registered unconditionally at startup — the existing Hiro pattern marker (`loadPatternMarker` + `trackMarker`) alongside the existing `3x3` barcode marker. Harmless under plain `'matrix'` mode: the template-matching pass simply never runs for that mode, so the pattern marker is registered but never matched until a combined mode is selected.
+- A `detectionMode` dropdown (`'matrix'` / `'mono+matrix'` / `'color+matrix'`, defaulting to `'matrix'`), applying changes through one `applyDetectionMode(state, mode)` function shared with the initial call, so the default and the switch can't drift apart.
+- A text log, updated every frame from the full `detected` array (`id N (pattern|barcode)`, comma-separated, or `none`) — not a second 3D object. Chosen as the verification signal specifically because it's unambiguous: reading two labelled entries proves both were found, with no risk of misreading overlapping or mis-posed 3D geometry. The log runs in every mode, not just combined ones, so the same line visibly grows from one entry to two the moment the mode changes.
+- `examples/barcode/`'s name and `examples/index.html`'s description stay as they are, with the on-page copy updated to mention combined-mode testing. Combined detection is still fundamentally a barcode-detection question — the modes exist to add matrix detection *on top of* pattern detection — so the folder's subject has grown by one comparison feature, not changed.
+
+### Decision Log
+
+| # | Decision | Alternatives considered | Why |
+|---|---|---|---|
+| 1 | Extend `examples/barcode/` in place | New `examples/combined/` | Least duplication; natural single page for "compare without restarting", which is what the issue asks for |
+| 2 | Test both `'mono+matrix'` and `'color+matrix'` | `'mono+matrix'` only | Genuinely separate code paths (verified in `arPattGetID.c`); marginal extra cost once the switcher exists |
+| 3 | Text log, not a second 3D object | Second cube/sphere for the barcode marker | Unambiguous verification signal; avoids extending `showMarker` for what is a diagnostic tool, not a demo |
+| 4 | Manual dropdown, not auto-cycling | Timer-driven mode cycling every N seconds | Verification needs a mode held steady while positioning markers in frame, not one that changes underneath the tester |
+| 5 | Both markers registered unconditionally at startup | Register conditionally per mode | Simpler; inert in `'matrix'` mode rather than actually harmful |
+| 6 | Mode changes funnel through one `applyDetectionMode` function | Separate initial call and `onchange` handler | Can't drift apart; single source of truth for what "set the mode" means |
+| 7 | Doc updates (README/CHANGELOG/this doc) deferred until real results come back | Update proactively based on expected behaviour | Nothing is verified until the page is actually run with a camera; writing the outcome before observing it is the mistake [[verify-do-not-reason]] exists to prevent |
+| 8 | `examples/barcode/` keeps its name; descriptions updated in place | Rename to a broader name; split into `examples/combined/` | Avoids rename churn across README, CHANGELOG, and this doc's own §5/Decision 10/R1, all of which already name this path; the name still fits the (grown) scope |
+
+### Outcome, recorded here once known
+
+**Combined modes do not work, and cannot be fixed in this repository.** Verified on a real camera with a Hiro pattern marker and a 3x3 barcode marker (ID 5): `'matrix'` alone detects the barcode correctly, while `'mono+matrix'` and `'color+matrix'` detect nothing — or intermittently render a small, flashing, mispositioned cube.
+
+Root cause. `ARMarkerInfo` carries three families of result fields, and `ar.h:197-215` documents their validity precisely: `.id`/`.dir`/`.cf` are valid only when detection is pattern-only **or** matrix-only, *"but not both"*; `.idPatt`/`.dirPatt`/`.cfPatt` are valid whenever the mode *includes* pattern matching, and `.idMatrix`/`.dirMatrix`/`.cfMatrix` whenever it *includes* matrix detection. In the two combined modes the engine populates the latter two families and never assigns `.id`. This is deliberate — with both families active there is no single correct answer to "what is this marker's ID" — and it is implemented consistently in `arGetMarkerInfo.c` and in both of `arDetectMarker.c`'s combined-mode branches (history carryover at L251-276, confidence cutoff at L352-363), neither of which touches `.id`.
+
+`artoolkit5-wasm`'s `getMarkerInfo()` binds only the `.id` family, so `tracking.ts` reads a field the engine never wrote. Because the handle is `arMalloc`'d without initialising `markerInfo`, and that array is reused every frame without clearing, the read returns uninitialised heap or a leftover from a different square in an earlier frame. On a zero-filled WASM heap it returns `0` — a *valid* marker ID, and almost certainly the Hiro pattern's — which is why the symptom is a plausible-looking wrong detection rather than a clean miss.
+
+Corrected mid-investigation: this was first diagnosed as a missing `else` branch in `arGetMarkerInfo.c`. That was wrong. There is no missing branch; the engine is behaving as documented, and the defect is on our side of the boundary.
+
+Reference implementation. AR.js reads `marker.idPatt` for pattern markers and `marker.idMatrix` for barcode markers (`arjs-markercontrols.js:308,315`), gating both on `cfPatt`/`cfMatrix`, and never reads `.id` anywhere. Its `Context` exposes no matrix-only mode at all (`['color', 'color_and_matrix', 'mono', 'mono_and_matrix']`), so combined modes are AR.js's *only* barcode path — strong evidence the approach works once the right fields are readable.
+
+Consequences for this design:
+
+- **R1 is realised.** `'color+matrix'` and `'mono+matrix'` stay in the `DetectionMode` union but must not be documented as supported until the binding is fixed. Nothing has shipped, so no consumer is affected yet.
+- **The #33 branch is held, not merged.** Merging would publish two modes that silently return nothing.
+- **A second gap surfaced.** Confidence is not exposed at all, so consumers cannot filter above the engine's built-in `AR_CONFIDENCE_CUTOFF_DEFAULT` of `0.5` (`arConfig.h:120`). AR.js defaults its own `minConfidence` to `0.6`. This matters most in combined mode, where template matching runs against every square including barcode ones. Needs the same binding change.
+- **`globalID` is unreachable too.** `matrixCodeType: 'global_id'` is selectable but its 64-bit result is not bound, so that code type cannot currently be used.
+
+Blocked on `artoolkit5-wasm` binding `idPatt`/`idMatrix`/`dirPatt`/`dirMatrix`/`cfPatt`/`cfMatrix` (and ideally `globalID`), plus a WASM rebuild.

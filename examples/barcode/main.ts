@@ -40,16 +40,34 @@
  * Unlike the webcam example, there is no `.patt` file to load: the ID is
  * `trackBarcodeMarker`'s own argument, encoded directly in the marker's
  * geometry rather than assigned by the engine.
+ *
+ * Also registers the webcam example's Hiro pattern marker and exposes a
+ * detection-mode switcher, so `'mono+matrix'`/`'color+matrix'` — detecting
+ * both marker families at once — can be verified against the real engine.
+ * See docs/DESIGN-detector-and-barcode.md §9 and issue #33: the mocked test
+ * suite can prove `configureDetector` calls the right setter, but not that
+ * the engine then finds two different kinds of markers in one frame.
  */
 
-import * as THREE from 'three';
+import {
+    BoxGeometry,
+    type Camera,
+    Mesh,
+    MeshNormalMaterial,
+    PerspectiveCamera,
+    Scene,
+    WebGLRenderer,
+} from 'three';
 import {
     configureDetector,
     createARToolKitState,
     getCameraProjectionMatrix,
+    loadPatternMarker,
     processFrame,
     trackBarcodeMarker,
+    trackMarker,
     type ARToolKitState,
+    type DetectionMode,
     type MarkerPose,
 } from '../../src/index';
 
@@ -64,11 +82,16 @@ const MARKER_WIDTH = 1.0;
 // Same calibration file as examples/webcam — nothing about the camera changes
 // between marker families, only which marker is being detected.
 const CAMERA_PARAM_URL = '../webcam/data/camera_para.dat';
+// Reusing the webcam example's own pattern marker — this page needs both
+// families registered to test combined-mode detection.
+const MARKER_PATTERN_URL = '../webcam/data/patt.hiro';
 
 // data/marker_05_3x3.jpg encodes ID 5 as a 3x3 matrix code. Print it or
 // display it on a second screen, the same as the Hiro marker in the webcam
 // example.
 const BARCODE_ID = 5;
+
+const DETECTION_MODES: DetectionMode[] = ['matrix', 'mono+matrix', 'color+matrix'];
 
 async function main(): Promise<void> {
     const stage = getStage();
@@ -84,16 +107,25 @@ async function main(): Promise<void> {
 
     // Barcode markers are only detected once the engine is in a matrix-capable
     // mode. This is the one step a pattern-only consumer never needs.
-    configureDetector(state, { detectionMode: 'matrix', matrixCodeType: '3x3' });
+    applyDetectionMode(state, 'matrix');
+
+    // Both families are registered regardless of the active mode. That is
+    // harmless under plain 'matrix': the template-matching pass that would
+    // find the pattern marker simply never runs for that mode, so it sits
+    // registered but unmatched until a combined mode is selected.
+    const patternId = await loadPatternMarker(state, MARKER_PATTERN_URL);
+    trackMarker(state, patternId, MARKER_WIDTH);
     trackBarcodeMarker(state, BARCODE_ID, MARKER_WIDTH);
 
     const scene = createScene(stage, state);
+    const controlPanel = createControlPanel(state);
 
     renderContinuously(() => {
         const pixels = grabFrame();
         if (!pixels) return;
 
         const { detected, lost } = processFrame(state, pixels);
+        controlPanel.updateLog(detected);
 
         if (lost.length > 0) {
             console.log('marker lost:', lost.join(', '));
@@ -102,6 +134,15 @@ async function main(): Promise<void> {
         showMarker(scene.cube, detected[0]);
         scene.renderer.render(scene.scene, scene.camera);
     });
+}
+
+/**
+ * The single place `detectionMode` is applied, used both for the initial
+ * mode and every subsequent change from the panel — so the default and the
+ * switcher can never independently drift out of sync.
+ */
+function applyDetectionMode(state: ARToolKitState, mode: DetectionMode): void {
+    configureDetector(state, { detectionMode: mode, matrixCodeType: '3x3' });
 }
 
 function getStage(): HTMLElement {
@@ -162,21 +203,21 @@ function createFrameGrabber(video: HTMLVideoElement): () => Uint8ClampedArray | 
 }
 
 interface Stage {
-    renderer: THREE.WebGLRenderer;
-    scene: THREE.Scene;
-    camera: THREE.Camera;
-    cube: THREE.Mesh;
+    renderer: WebGLRenderer;
+    scene: Scene;
+    camera: Camera;
+    cube: Mesh;
 }
 
 function createScene(stage: HTMLElement, state: ARToolKitState): Stage {
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const renderer = new WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(FRAME_WIDTH, FRAME_HEIGHT);
     overlay(renderer.domElement, 1);
     stage.appendChild(renderer.domElement);
 
-    const scene = new THREE.Scene();
+    const scene = new Scene();
 
-    const camera = new THREE.PerspectiveCamera(60, FRAME_WIDTH / FRAME_HEIGHT, 0.1, 10000);
+    const camera = new PerspectiveCamera(60, FRAME_WIDTH / FRAME_HEIGHT, 0.1, 10000);
     camera.projectionMatrix.fromArray(getCameraProjectionMatrix(state));
     camera.matrixAutoUpdate = false;
     scene.add(camera);
@@ -187,13 +228,13 @@ function createScene(stage: HTMLElement, state: ARToolKitState): Stage {
     return { renderer, scene, camera, cube };
 }
 
-function createCube(): THREE.Mesh {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+function createCube(): Mesh {
+    const geometry = new BoxGeometry(1, 1, 1);
     geometry.translate(0, 0, 0.5); // sit on the marker plane rather than through it
 
-    const cube = new THREE.Mesh(
+    const cube = new Mesh(
         geometry,
-        new THREE.MeshNormalMaterial({ transparent: true, opacity: 0.8 })
+        new MeshNormalMaterial({ transparent: true, opacity: 0.8 })
     );
 
     cube.matrixAutoUpdate = false;
@@ -202,12 +243,68 @@ function createCube(): THREE.Mesh {
     return cube;
 }
 
-function showMarker(cube: THREE.Mesh, marker: MarkerPose | undefined): void {
+function showMarker(cube: Mesh, marker: MarkerPose | undefined): void {
     cube.visible = marker !== undefined;
     if (!marker) return;
 
     cube.matrix.fromArray(marker.matrixGL);
     cube.matrixWorldNeedsUpdate = true;
+}
+
+/**
+ * Detection-mode switcher and a per-frame detection log. The log, not a
+ * second 3D object, is the verification signal here: reading two labelled
+ * entries proves both marker families were found, with no risk of misreading
+ * overlapping or mis-posed geometry. It runs in every mode, not just the
+ * combined ones, so the same line visibly grows from one entry to two the
+ * moment the mode changes.
+ */
+function createControlPanel(state: ARToolKitState): { updateLog: (detected: MarkerPose[]) => void } {
+    const panel = document.createElement('div');
+    panel.style.position = 'fixed';
+    panel.style.top = '12px';
+    panel.style.right = '12px';
+    panel.style.zIndex = '10';
+    panel.style.padding = '10px 12px';
+    panel.style.background = 'rgba(0, 0, 0, 0.6)';
+    panel.style.color = '#fff';
+    panel.style.font = '12px sans-serif';
+    panel.style.borderRadius = '4px';
+    panel.style.display = 'flex';
+    panel.style.flexDirection = 'column';
+    panel.style.gap = '8px';
+    document.body.appendChild(panel);
+
+    const modeSelect = document.createElement('select');
+    for (const mode of DETECTION_MODES) {
+        const option = document.createElement('option');
+        option.value = mode;
+        option.textContent = mode;
+        modeSelect.appendChild(option);
+    }
+    modeSelect.value = 'matrix';
+    modeSelect.onchange = () => {
+        applyDetectionMode(state, modeSelect.value as DetectionMode);
+    };
+
+    const label = document.createElement('label');
+    label.textContent = 'detection mode';
+    label.appendChild(modeSelect);
+    panel.appendChild(label);
+
+    const log = document.createElement('div');
+    panel.appendChild(log);
+
+    return {
+        updateLog: (detected) => {
+            log.textContent = formatDetected(detected);
+        },
+    };
+}
+
+function formatDetected(detected: MarkerPose[]): string {
+    if (detected.length === 0) return 'detected: none';
+    return 'detected: ' + detected.map((marker) => `id ${marker.id} (${marker.type})`).join(', ');
 }
 
 function overlay(element: HTMLElement, zIndex: number): void {
