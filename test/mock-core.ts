@@ -129,7 +129,19 @@ export function createMockState(options: MockCoreOptions = {}): {
             },
             detectMarker: () => undefined,
             getMarkerNum: () => currentIds().length,
-            getMarkerInfo: (index: number) => ({ id: currentIds()[index] }),
+            // Reports each visible ID in *both* families. The real engine
+            // usually populates only one, but reporting both is the strictest
+            // input the library can get: it forces `matchFamily`'s type check
+            // to do the disambiguating, so dropping that check would surface
+            // here as duplicate detections rather than passing silently.
+            // `id` is deliberately -1, as the engine reports it in the
+            // combined detection modes. Any regression to reading it instead
+            // of the per-mode fields then fails every detection test loudly,
+            // rather than passing because the mock happened to populate it.
+            getMarkerInfo: (index: number) => {
+                const id = currentIds()[index];
+                return { id: -1, idPatt: id, idMatrix: id };
+            },
             getTransMatSquare: (index: number) => {
                 calls.transMat.push(index);
             },

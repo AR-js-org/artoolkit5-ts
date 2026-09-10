@@ -20,16 +20,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (matrix code) marker. Unlike a pattern marker there is nothing to load first:
   the ID is encoded in the marker's geometry, not assigned by the engine.
 - `MarkerType` (`'pattern' | 'barcode'`), on both `MarkerPose` and
-  `TrackedMarkerState`. Read from the registry rather than the engine — `getMarkerInfo`
-  cannot tell the two families apart — which is also why `trackMarker` and
-  `trackBarcodeMarker` now throw `ARToolKitError` if the ID they are given is
-  already registered under the other family, rather than silently overwriting it.
+  `TrackedMarkerState`. The engine reports each family through its own field
+  (`idPatt` / `idMatrix`), and a detection is matched against the registry by the
+  field that produced it *and* the registered type — so a barcode ID of 5 cannot
+  resolve to a pattern marker registered as 5. The registry is a single map keyed
+  by integer ID, so one ID still cannot hold both registrations at once: `trackMarker`
+  and `trackBarcodeMarker` throw `ARToolKitError` rather than silently overwriting.
+- **Combined pattern+barcode detection.** `'color+matrix'` and `'mono+matrix'` detect
+  both marker families in a single frame, verified against a real camera rather than a
+  mock. This required a fix in the WASM binding, which exposed only a field the engine
+  leaves unassigned in those modes
+  ([artoolkit5-wasm#23](https://github.com/AR-js-org/artoolkit5-wasm/issues/23)); see
+  `docs/DESIGN-detector-and-barcode.md` §9 for the full analysis. `examples/barcode/`
+  gained a detection-mode switcher and a per-frame detection log demonstrating it.
 - `examples/barcode/`, tracking a 3x3 matrix code marker. `examples/index.html`
   now links to both examples.
 
 ### Changed
 
-- Depends on `@ar-js-org/artoolkit5-wasm@^0.2.0`, up from `^0.1.3`.
+- Depends on `@ar-js-org/artoolkit5-wasm@^0.3.0`, up from `^0.1.3`. `0.3.0` is required,
+  not merely preferred: it is the first release to bind `idPatt`/`idMatrix`, without
+  which the combined detection modes silently report nothing or the wrong marker.
 
 ### Notes
 

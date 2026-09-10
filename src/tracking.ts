@@ -183,24 +183,49 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
     const candidateCount = state.core.getMarkerNum();
 
     for (let candidate = 0; candidate < candidateCount; candidate++) {
-        const { id } = state.core.getMarkerInfo(candidate);
-        if (id === UNRECOGNISED_MARKER_ID) continue;
+        const info = state.core.getMarkerInfo(candidate);
 
-        const tracked = state.markers[id];
-        if (!tracked) continue;
+        // Each family is matched through the field that produced it, never
+        // through `info.id` — the engine leaves that one unassigned in the
+        // combined modes. Both are checked because one square can match a
+        // pattern and a barcode in the same frame.
+        const pattern = matchFamily(state, candidate, info.idPatt, 'pattern');
+        if (pattern) detected.push(pattern);
 
-        tracked.inCurrent = true;
-        updatePose(state, candidate, tracked);
-
-        detected.push({
-            id: tracked.id,
-            type: tracked.type,
-            matrix: tracked.matrix,
-            matrixGL: tracked.matrixGL,
-        });
+        const barcode = matchFamily(state, candidate, info.idMatrix, 'barcode');
+        if (barcode) detected.push(barcode);
     }
 
     return detected;
+}
+
+/**
+ * Resolves one detection family against the registry, returning its pose if a
+ * marker of that family is registered under the reported ID.
+ */
+function matchFamily(
+    state: ARToolKitState,
+    candidate: number,
+    id: number,
+    type: MarkerType
+): MarkerPose | undefined {
+    if (id === UNRECOGNISED_MARKER_ID) return undefined;
+
+    // The type must match, not just the ID: both families share one registry
+    // keyed by integer, so a barcode ID of 5 must not resolve to a pattern
+    // marker that happens to be registered as 5.
+    const tracked = state.markers[id];
+    if (!tracked || tracked.type !== type) return undefined;
+
+    tracked.inCurrent = true;
+    updatePose(state, candidate, tracked);
+
+    return {
+        id: tracked.id,
+        type: tracked.type,
+        matrix: tracked.matrix,
+        matrixGL: tracked.matrixGL,
+    };
 }
 
 /**

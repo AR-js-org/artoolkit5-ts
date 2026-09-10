@@ -40,9 +40,11 @@
 /**
  * Which family a registered marker belongs to.
  *
- * The two share one integer ID space: `getMarkerInfo` does not distinguish
- * them (`idPatt`/`idMatrix` are not bound), so this is read from the
- * registry rather than the engine. See `trackMarker` and `trackBarcodeMarker`.
+ * The engine reports each family through its own field — `idPatt` for
+ * pattern markers, `idMatrix` for barcode markers — so a detection is
+ * matched against the registry by the field that produced it. This type
+ * records which field a given registration answers to. See `trackMarker`
+ * and `trackBarcodeMarker`.
  */
 export type MarkerType = 'pattern' | 'barcode';
 
@@ -126,10 +128,30 @@ export interface ARToolKitModule {
     addMarker(path: string): number;
 }
 
-/** Marker metadata returned by the detector for one candidate square. */
+/**
+ * Marker metadata returned by the detector for one candidate square.
+ *
+ * ARToolKit reports results in three families, and each is only valid in the
+ * detection modes that populate it — a field the active mode did not write
+ * would otherwise expose uninitialised engine memory. The binding reports
+ * `-1` for any family the mode does not populate, so every field here is
+ * always safe to read; `-1` uniformly means "no match".
+ *
+ * Requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0, which is where the
+ * per-mode fields were first bound.
+ */
 export interface MarkerInfo {
-    /** Engine-assigned marker ID, or -1 when unrecognised. */
+    /**
+     * Marker ID, or -1. Only meaningful when `detectionMode` is pattern-only
+     * *or* matrix-only — never both. Reported as -1 in the combined modes,
+     * where a single unified ID would be ambiguous. Prefer `idPatt` and
+     * `idMatrix`, which are valid in every mode that can produce them.
+     */
     id: number;
+    /** Pattern-marker ID, or -1. Valid when the mode includes template matching. */
+    idPatt: number;
+    /** Barcode (matrix code) ID, or -1. Valid when the mode includes matrix detection. */
+    idMatrix: number;
 }
 
 /**
