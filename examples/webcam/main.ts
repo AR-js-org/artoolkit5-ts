@@ -50,6 +50,7 @@ import {
 import {
     configureDetector,
     createARToolKitState,
+    disposeARToolKitState,
     getCameraProjectionMatrix,
     loadPatternMarker,
     processFrame,
@@ -80,34 +81,58 @@ const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto-median', 'auto-otsu', 
 async function main(): Promise<void> {
     const stage = getStage();
     const video = await startCamera(stage);
-    const grabFrame = createFrameGrabber(video);
 
-    const state = await createARToolKitState(
-        FRAME_WIDTH,
-        FRAME_HEIGHT,
-        CAMERA_PARAM_URL,
-        wasmUrl
-    );
+    // Setup past this point is asynchronous and can fail while the camera is
+    // already live — fetching the pattern file, or initialising the engine.
+    // Release both rather than leaving the capture indicator on with nothing
+    // using it.
+    let state: ARToolKitState | undefined;
+    try {
+        const grabFrame = createFrameGrabber(video);
 
-    const markerId = await loadPatternMarker(state, MARKER_PATTERN_URL);
-    trackMarker(state, markerId, MARKER_WIDTH);
+        state = await createARToolKitState(
+            FRAME_WIDTH,
+            FRAME_HEIGHT,
+            CAMERA_PARAM_URL,
+            wasmUrl
+        );
 
-    const scene = createScene(stage, state);
-    createControlPanel(state, scene.camera);
+        const markerId = await loadPatternMarker(state, MARKER_PATTERN_URL);
+        trackMarker(state, markerId, MARKER_WIDTH);
 
-    renderContinuously(() => {
-        const pixels = grabFrame();
-        if (!pixels) return;
+        const scene = createScene(stage, state);
+        createControlPanel(state, scene.camera);
+        const tracking = state;
 
-        const { detected, lost } = processFrame(state, pixels);
+        renderContinuously(() => {
+            const pixels = grabFrame();
+            if (!pixels) return;
 
-        if (lost.length > 0) {
-            console.log('marker lost:', lost.join(', '));
+            const { detected, lost } = processFrame(tracking, pixels);
+
+            if (lost.length > 0) {
+                console.log('marker lost:', lost.join(', '));
+            }
+
+            showMarker(scene.cube, detected[0]);
+            scene.renderer.render(scene.scene, scene.camera);
+        });
+    } catch (error) {
+        releaseCamera(video);
+        if (state) disposeARToolKitState(state);
+        throw error;
+    }
+}
+
+/** Stops every track so the camera indicator goes out. */
+function releaseCamera(video: HTMLVideoElement): void {
+    const stream = video.srcObject;
+    if (stream instanceof MediaStream) {
+        for (const track of stream.getTracks()) {
+            track.stop();
         }
-
-        showMarker(scene.cube, detected[0]);
-        scene.renderer.render(scene.scene, scene.camera);
-    });
+    }
+    video.srcObject = null;
 }
 
 function getStage(): HTMLElement {

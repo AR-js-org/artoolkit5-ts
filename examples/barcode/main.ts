@@ -61,6 +61,7 @@ import {
 import {
     configureDetector,
     createARToolKitState,
+    disposeARToolKitState,
     getCameraProjectionMatrix,
     loadPatternMarker,
     processFrame,
@@ -96,44 +97,68 @@ const DETECTION_MODES: DetectionMode[] = ['matrix', 'mono+matrix', 'color+matrix
 async function main(): Promise<void> {
     const stage = getStage();
     const video = await startCamera(stage);
-    const grabFrame = createFrameGrabber(video);
 
-    const state = await createARToolKitState(
-        FRAME_WIDTH,
-        FRAME_HEIGHT,
-        CAMERA_PARAM_URL,
-        wasmUrl
-    );
+    // Setup past this point is asynchronous and can fail while the camera is
+    // already live — fetching the pattern file, or initialising the engine.
+    // Release both rather than leaving the capture indicator on with nothing
+    // using it.
+    let state: ARToolKitState | undefined;
+    try {
+        const grabFrame = createFrameGrabber(video);
 
-    // Barcode markers are only detected once the engine is in a matrix-capable
-    // mode. This is the one step a pattern-only consumer never needs.
-    applyDetectionMode(state, 'matrix');
+        state = await createARToolKitState(
+            FRAME_WIDTH,
+            FRAME_HEIGHT,
+            CAMERA_PARAM_URL,
+            wasmUrl
+        );
 
-    // Both families are registered regardless of the active mode. That is
-    // harmless under plain 'matrix': the template-matching pass that would
-    // find the pattern marker simply never runs for that mode, so it sits
-    // registered but unmatched until a combined mode is selected.
-    const patternId = await loadPatternMarker(state, MARKER_PATTERN_URL);
-    trackMarker(state, patternId, MARKER_WIDTH);
-    trackBarcodeMarker(state, BARCODE_ID, MARKER_WIDTH);
+        // Barcode markers are only detected once the engine is in a matrix-capable
+        // mode. This is the one step a pattern-only consumer never needs.
+        applyDetectionMode(state, 'matrix');
 
-    const scene = createScene(stage, state);
-    const controlPanel = createControlPanel(state);
+        // Both families are registered regardless of the active mode. That is
+        // harmless under plain 'matrix': the template-matching pass that would
+        // find the pattern marker simply never runs for that mode, so it sits
+        // registered but unmatched until a combined mode is selected.
+        const patternId = await loadPatternMarker(state, MARKER_PATTERN_URL);
+        trackMarker(state, patternId, MARKER_WIDTH);
+        trackBarcodeMarker(state, BARCODE_ID, MARKER_WIDTH);
 
-    renderContinuously(() => {
-        const pixels = grabFrame();
-        if (!pixels) return;
+        const scene = createScene(stage, state);
+        const controlPanel = createControlPanel(state);
+        const tracking = state;
 
-        const { detected, lost } = processFrame(state, pixels);
-        controlPanel.updateLog(detected);
+        renderContinuously(() => {
+            const pixels = grabFrame();
+            if (!pixels) return;
 
-        if (lost.length > 0) {
-            console.log('marker lost:', lost.join(', '));
+            const { detected, lost } = processFrame(tracking, pixels);
+            controlPanel.updateLog(detected);
+
+            if (lost.length > 0) {
+                console.log('marker lost:', lost.join(', '));
+            }
+
+            showMarker(scene.cube, detected[0]);
+            scene.renderer.render(scene.scene, scene.camera);
+        });
+    } catch (error) {
+        releaseCamera(video);
+        if (state) disposeARToolKitState(state);
+        throw error;
+    }
+}
+
+/** Stops every track so the camera indicator goes out. */
+function releaseCamera(video: HTMLVideoElement): void {
+    const stream = video.srcObject;
+    if (stream instanceof MediaStream) {
+        for (const track of stream.getTracks()) {
+            track.stop();
         }
-
-        showMarker(scene.cube, detected[0]);
-        scene.renderer.render(scene.scene, scene.camera);
-    });
+    }
+    video.srcObject = null;
 }
 
 /**
