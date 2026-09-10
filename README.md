@@ -245,8 +245,9 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## ⚠️ Limitations
 
-- **Combined pattern+barcode detection is unverified.** `'color+matrix'`/`'mono+matrix'` are implemented and typed, but only single-mode detection — a pattern marker on its own, or a barcode marker on its own with `detectionMode: 'matrix'` — has been confirmed against the real engine, in `examples/webcam` and `examples/barcode` respectively. NFT is out of scope for this project — see [Roadmap](#-roadmap).
+- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color+matrix'` and `'mono+matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.3.0`; this matters only if you override it.
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
+- **NFT markers are out of scope** for this project — see [Roadmap](#-roadmap).
 
 ## 🗺️ Roadmap
 
@@ -254,7 +255,7 @@ Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is t
 
 **v0.1** (done) — lifecycle, packaging, marker-lost reporting from `processFrame`, a test suite and CI.
 
-**Next** — `configureDetector` (done), single-mode barcode markers (done — see [Limitations](#-limitations) for what combined-mode detection still needs), a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
+**Next** — `configureDetector` (done), barcode markers including combined pattern+barcode detection (done, verified against a real camera), a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
 
 **Out of scope** — NFT tracking. This project and `artoolkit5-wasm` cover pattern and barcode markers; NFT belongs to other projects in the ecosystem.
 

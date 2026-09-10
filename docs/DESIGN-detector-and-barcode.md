@@ -1,6 +1,6 @@
 # artoolkit5-ts — Detector Configuration & Barcode Markers Design
 
-**Status:** #8 (`configureDetector`) implemented and merged. #9 (barcode markers) implemented for single-mode detection. #33 (combined-mode verification) designed and implemented, but **blocked**: combined modes cannot work until `artoolkit5-wasm` binds `idPatt`/`idMatrix` — see §9 Outcome.
+**Status:** #8 (`configureDetector`) implemented and merged. #9 (barcode markers) implemented. #33 (combined-mode verification) implemented and **verified against a real camera** — the block described in §9 was fixed upstream in `@ar-js-org/artoolkit5-wasm@0.3.0`; see §9 Resolution.
 **Date:** 2026-08-30
 **Author:** Walter Perdan
 **Issues:** [#8](https://github.com/AR-js-org/artoolkit5-ts/issues/8) (`configureDetector`), [#9](https://github.com/AR-js-org/artoolkit5-ts/issues/9) (barcode markers)
@@ -263,15 +263,31 @@ Extends `examples/barcode/` in place (no new example, no shared module between e
 | 7 | Doc updates (README/CHANGELOG/this doc) deferred until real results come back | Update proactively based on expected behaviour | Nothing is verified until the page is actually run with a camera; writing the outcome before observing it is the mistake [[verify-do-not-reason]] exists to prevent |
 | 8 | `examples/barcode/` keeps its name; descriptions updated in place | Rename to a broader name; split into `examples/combined/` | Avoids rename churn across README, CHANGELOG, and this doc's own §5/Decision 10/R1, all of which already name this path; the name still fits the (grown) scope |
 
-### Outcome, recorded here once known
+### Outcome
 
-**Combined modes do not work, and cannot be fixed in this repository.** Verified on a real camera with a Hiro pattern marker and a 3x3 barcode marker (ID 5): `'matrix'` alone detects the barcode correctly, while `'mono+matrix'` and `'color+matrix'` detect nothing — or intermittently render a small, flashing, mispositioned cube.
+**Resolved.** The finding below stood for one release cycle; the fix landed upstream and is verified. See [Resolution](#resolution) at the end of this section.
+
+**Combined modes did not work, and could not be fixed in this repository.** Verified on a real camera with a Hiro pattern marker and a 3x3 barcode marker (ID 5): `'matrix'` alone detects the barcode correctly, while `'mono+matrix'` and `'color+matrix'` detect nothing — or intermittently render a small, flashing, mispositioned cube.
 
 Root cause. `ARMarkerInfo` carries three families of result fields, and `ar.h:197-215` documents their validity precisely: `.id`/`.dir`/`.cf` are valid only when detection is pattern-only **or** matrix-only, *"but not both"*; `.idPatt`/`.dirPatt`/`.cfPatt` are valid whenever the mode *includes* pattern matching, and `.idMatrix`/`.dirMatrix`/`.cfMatrix` whenever it *includes* matrix detection. In the two combined modes the engine populates the latter two families and never assigns `.id`. This is deliberate — with both families active there is no single correct answer to "what is this marker's ID" — and it is implemented consistently in `arGetMarkerInfo.c` and in both of `arDetectMarker.c`'s combined-mode branches (history carryover at L251-276, confidence cutoff at L352-363), neither of which touches `.id`.
 
 `artoolkit5-wasm`'s `getMarkerInfo()` binds only the `.id` family, so `tracking.ts` reads a field the engine never wrote. Because the handle is `arMalloc`'d without initialising `markerInfo`, and that array is reused every frame without clearing, the read returns uninitialised heap or a leftover from a different square in an earlier frame. On a zero-filled WASM heap it returns `0` — a *valid* marker ID, and almost certainly the Hiro pattern's — which is why the symptom is a plausible-looking wrong detection rather than a clean miss.
 
 Corrected mid-investigation: this was first diagnosed as a missing `else` branch in `arGetMarkerInfo.c`. That was wrong. There is no missing branch; the engine is behaving as documented, and the defect is on our side of the boundary.
+
+#### Resolution
+
+Fixed upstream in [`@ar-js-org/artoolkit5-wasm@0.3.0`](https://github.com/AR-js-org/artoolkit5-wasm/releases) — issue [artoolkit5-wasm#23](https://github.com/AR-js-org/artoolkit5-wasm/issues/23), PR [#25](https://github.com/AR-js-org/artoolkit5-wasm/pull/25), released in [#28](https://github.com/AR-js-org/artoolkit5-wasm/pull/28). `getMarkerInfo()` now binds all six per-mode fields, each reported as its real value only in the modes that populate it and `-1` otherwise.
+
+One thing that shaped the upstream fix and is worth recording, because it is the non-obvious half: **the hazard is symmetric.** Binding all six fields unconditionally would have traded one bug for two — in pattern-only modes `arPattGetID.c:236` skips the matrix block entirely, leaving `idMatrix` uninitialised, and in matrix-only mode `:279` skips the template block, leaving `idPatt` uninitialised. Reading `idMatrix` under `'mono'` would have been exactly the same class of defect as reading `.id` under `'mono+matrix'`. The gating predicates upstream are transcribed from the engine's own branch conditions rather than written independently, so they cannot drift from the behaviour they describe.
+
+On this side, `collectDetectedPoses` now resolves each family through the field that produced it, and checks the registered `type` as well as the ID — the registry is one map keyed by integer, so a barcode ID of 5 must not resolve to a pattern marker registered as 5. Both properties are covered by mutation testing: reading `info.id` again breaks 6 tests, and dropping the type check breaks 2.
+
+Verified end to end on a real camera against the published `0.3.0`: pattern and barcode markers detected together in a single frame under both combined modes, and correctly *not* detected in the single modes that exclude them. The negative cases matter more than the positive ones here — a stale read can produce a plausible ID by accident, which is precisely how this hid in the first place.
+
+A detail that closes the loop: `patt.hiro` is assigned **ID 0**, and an uninitialised read on a zero-filled WASM heap also yields `0`. The stale value did not merely differ from the right answer, it collided with a genuinely registered marker — which is why the original symptom was "it detects the Hiro marker" rather than an obvious failure. The theory predicted the specific wrong answer, not just that the answer would be wrong.
+
+Decision 7 held up: nothing here was written before it was observed.
 
 Reference implementation. AR.js reads `marker.idPatt` for pattern markers and `marker.idMatrix` for barcode markers (`arjs-markercontrols.js:308,315`), gating both on `cfPatt`/`cfMatrix`, and never reads `.id` anywhere. Its `Context` exposes no matrix-only mode at all (`['color', 'color_and_matrix', 'mono', 'mono_and_matrix']`), so combined modes are AR.js's *only* barcode path — strong evidence the approach works once the right fields are readable.
 

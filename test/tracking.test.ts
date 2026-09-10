@@ -92,9 +92,10 @@ describe('trackBarcodeMarker', () => {
 });
 
 describe('marker type collisions', () => {
-    // Pattern and barcode markers share one integer ID space (getMarkerInfo
-    // does not distinguish them), so registering an ID under one type must
-    // not silently overwrite a registration of the other.
+    // The engine distinguishes the families (idPatt vs idMatrix), but the
+    // registry is a single map keyed by integer ID, so one ID cannot hold
+    // both a pattern and a barcode registration at once. Registering an ID
+    // under one type must not silently overwrite the other.
 
     it('trackBarcodeMarker throws if the ID is already a pattern marker', () => {
         const { state } = createMockState();
@@ -221,9 +222,9 @@ describe('processFrame type reporting', () => {
     });
 
     it('reports the correct type per marker when both families are detected in the same frame', () => {
-        // getMarkerInfo cannot distinguish the two families in a combined
-        // detection mode -- this is what proves `type` stays correct anyway,
-        // since it is read from the registry rather than the engine.
+        // The mock reports every ID in both families at once, which is the
+        // strictest input available: only the registered type disambiguates
+        // them, so this fails with duplicates if that check is ever dropped.
         const PATTERN_ID = MARKER_ID;
         const BARCODE_ID = MARKER_ID + 1;
         const { state } = createMockState({ visibleIds: [[PATTERN_ID, BARCODE_ID]] });
