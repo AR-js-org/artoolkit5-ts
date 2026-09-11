@@ -68,7 +68,15 @@ export async function createARToolKitState(
     const cameraId = await loadCameraFromUrl(mod, core, cameraUrl);
     await core.setup(width, height, cameraId);
 
-    return { mod, core, width, height, markers: {}, disposed: false };
+    return {
+        mod,
+        core,
+        width,
+        height,
+        patternMarkers: {},
+        barcodeMarkers: {},
+        disposed: false,
+    };
 }
 
 /**
@@ -93,6 +101,7 @@ export function disposeARToolKitState(state: ARToolKitState): void {
     state.core.teardown();
     state.core.delete();
 
-    state.markers = {};
+    state.patternMarkers = {};
+    state.barcodeMarkers = {};
     state.disposed = true;
 }

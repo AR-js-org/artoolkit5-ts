@@ -36,7 +36,7 @@ It is renderer-agnostic and DOM-free. It gives you marker poses as matrices; wha
 npm install @ar-js-org/artoolkit5-ts
 ```
 
-[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.2.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
+[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.3.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
 
 `three` is only needed to run the examples, not the library.
 
@@ -75,8 +75,8 @@ for (const marker of detected) {
 
 // `lost` holds markers that were visible last frame and are not now —
 // reported once, on the frame they disappear
-for (const id of lost) {
-  hideObjectFor(id);
+for (const marker of lost) {
+  hideObjectFor(marker.type, marker.id);
 }
 ```
 
@@ -132,13 +132,15 @@ Registers a barcode (matrix code) marker for tracking. Unlike a pattern marker, 
 
 Detecting a barcode marker also requires `configureDetector` to have set a matrix-capable `detectionMode` (`'matrix'`, `'color+matrix'`, or `'mono+matrix'`) and a `matrixCodeType` matching the marker.
 
-Pattern and barcode markers share one integer ID space. Registering an ID under one family while it is already registered under the other throws `ARToolKitError` rather than silently overwriting the existing registration:
+Pattern and barcode markers have **independent ID spaces**, and are kept in separate registries. Pattern IDs are assigned by the engine starting at 0; barcode IDs are encoded in the marker's own geometry and chosen by whoever printed it. So `7` in one family is unrelated to `7` in the other, and both can be tracked at once:
 
 ```typescript
-trackBarcodeMarker(state, 7);
-trackMarker(state, 7);
-// ARToolKitError: Marker ID 7 is already registered as a barcode marker.
+trackMarker(state, 7);         // pattern 7  -> state.patternMarkers
+trackBarcodeMarker(state, 7);  // barcode 7  -> state.barcodeMarkers
+// both tracked; detections and losses carry `type` to tell them apart
 ```
+
+The engine reports each family through its own field (`idPatt` / `idMatrix`), so a detection is only ever matched against the registry it belongs to.
 
 ### `configureDetector(state, opts)`
 
@@ -169,9 +171,11 @@ Detects registered markers in one frame. Returns a `FrameResult`:
 ```typescript
 interface FrameResult {
   detected: MarkerPose[];  // visible in this frame
-  lost: number[];          // IDs visible last frame, gone in this one
+  lost: LostMarker[];      // { id, type } visible last frame, gone in this one
 }
 ```
+
+Each `lost` entry carries `type` as well as `id`, because the two families have independent ID spaces — a pattern `7` and a barcode `7` may both be registered, and an ID alone could not say which disappeared.
 
 `lost` is reported **exactly once**, on the frame a marker disappears — it does not repeat while the marker stays absent. Tracking already computes this transition internally, so exposing it saves every consumer from diffing successive results to recover it.
 
@@ -209,7 +213,7 @@ Both take an optional output buffer — supply one in hot paths to avoid allocat
 
 ### Types
 
-`ARToolKitState`, `MarkerPose`, `FrameResult`, `TrackedMarkerState`, `MarkerType`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
+`ARToolKitState`, `MarkerPose`, `FrameResult`, `LostMarker`, `TrackedMarkerState`, `MarkerType`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
 
 ```typescript
 interface MarkerPose {

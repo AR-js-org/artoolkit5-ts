@@ -190,7 +190,8 @@ export function createMockState(options: MockCoreOptions = {}): {
         },
         width: 640,
         height: 480,
-        markers: {},
+        patternMarkers: {},
+        barcodeMarkers: {},
         disposed: false,
     };
 

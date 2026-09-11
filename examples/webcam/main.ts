@@ -111,7 +111,7 @@ async function main(): Promise<void> {
             const { detected, lost } = processFrame(tracking, pixels);
 
             if (lost.length > 0) {
-                console.log('marker lost:', lost.join(', '));
+                console.log('marker lost:', lost.map((m) => `${m.type} id ${m.id}`).join(', '));
             }
 
             showMarker(scene.cube, detected[0]);

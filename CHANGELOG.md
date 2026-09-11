@@ -19,13 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `trackBarcodeMarker(state, barcodeId, markerWidth?)` — registers a barcode
   (matrix code) marker. Unlike a pattern marker there is nothing to load first:
   the ID is encoded in the marker's geometry, not assigned by the engine.
-- `MarkerType` (`'pattern' | 'barcode'`), on both `MarkerPose` and
-  `TrackedMarkerState`. The engine reports each family through its own field
-  (`idPatt` / `idMatrix`), and a detection is matched against the registry by the
-  field that produced it *and* the registered type — so a barcode ID of 5 cannot
-  resolve to a pattern marker registered as 5. The registry is a single map keyed
-  by integer ID, so one ID still cannot hold both registrations at once: `trackMarker`
-  and `trackBarcodeMarker` throw `ARToolKitError` rather than silently overwriting.
+- `MarkerType` (`'pattern' | 'barcode'`) on `MarkerPose`, and `LostMarker`
+  (`{ id, type }`) as the element type of `FrameResult.lost`.
+- **Independent ID spaces for the two marker families.** `ARToolKitState` now holds
+  separate `patternMarkers` and `barcodeMarkers` registries instead of a single
+  `markers` map, so a pattern marker and a barcode marker may both be registered
+  as `7` and tracked simultaneously. Pattern IDs are engine-assigned from 0 while
+  barcode IDs are chosen by whoever printed the marker, so collisions are ordinary
+  rather than exceptional — `patt.hiro` is ID `0`. The engine reports each family
+  through its own field (`idPatt` / `idMatrix`), and each is matched only against
+  its own registry. This mirrors `artoolkit5-js`, which has kept the two separate
+  all along. ([#36](https://github.com/AR-js-org/artoolkit5-ts/issues/36))
 - **Combined pattern+barcode detection.** `'color+matrix'` and `'mono+matrix'` detect
   both marker families in a single frame, verified against a real camera rather than a
   mock. This required a fix in the WASM binding, which exposed only a field the engine
@@ -47,10 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 `thresholdMode: 'auto-adaptive'` is not offered: the WebARKitLib build this
 library ships compiles that mode's implementation out, and passing it would
 silently degrade to `'manual'`.
-
-Combined pattern+barcode detection (`'color+matrix'`/`'mono+matrix'`) is
-implemented and typed but not yet verified against the real engine — only
-single-family detection has been confirmed, in the two examples.
 
 ## [0.1.0] - 2026-08-16
 

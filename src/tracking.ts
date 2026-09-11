@@ -31,7 +31,14 @@
  *
  */
 
-import { ARToolKitState, FrameResult, MarkerPose, MarkerType, TrackedMarkerState } from './domain';
+import {
+    ARToolKitState,
+    FrameResult,
+    LostMarker,
+    MarkerPose,
+    MarkerType,
+    TrackedMarkerState,
+} from './domain';
 import { ARToolKitError, assertNotDisposed } from './errors';
 import { arglCameraViewRHf, transMatToGLMat } from './math';
 
@@ -60,8 +67,7 @@ const glMatrixScratch = new Float32Array(16);
  * @param pattId ID returned by `loadPatternMarker`.
  * @param markerWidth Physical marker width; the unit chosen here is the unit
  *   all returned translations are expressed in.
- * @throws {ARToolKitError} if the state has been disposed, or if `pattId` is
- *   already registered as a barcode marker.
+ * @throws {ARToolKitError} if the state has been disposed.
  */
 export function trackMarker(
     state: ARToolKitState,
@@ -69,7 +75,7 @@ export function trackMarker(
     markerWidth: number = 1.0
 ): void {
     assertNotDisposed(state, 'trackMarker');
-    registerMarker(state, pattId, 'pattern', markerWidth);
+    state.patternMarkers[pattId] = createTrackedMarker(pattId, markerWidth);
 }
 
 /**
@@ -85,12 +91,15 @@ export function trackMarker(
  * the engine into a matrix-capable `detectionMode` (`'matrix'`,
  * `'color+matrix'`, or `'mono+matrix'`); this function only registers the ID.
  *
+ * The two families have independent ID spaces, so a barcode may share an ID
+ * with an already-registered pattern marker: the engine reports each through
+ * its own field, and they are kept in separate registries.
+ *
  * @param barcodeId The ID encoded in the marker itself — this is not
  *   assigned by the engine, unlike a pattern marker's ID.
  * @param markerWidth Physical marker width; the unit chosen here is the unit
  *   all returned translations are expressed in.
- * @throws {ARToolKitError} if the state has been disposed, or if `barcodeId`
- *   is already registered as a pattern marker.
+ * @throws {ARToolKitError} if the state has been disposed.
  */
 export function trackBarcodeMarker(
     state: ARToolKitState,
@@ -98,32 +107,13 @@ export function trackBarcodeMarker(
     markerWidth: number = 1.0
 ): void {
     assertNotDisposed(state, 'trackBarcodeMarker');
-    registerMarker(state, barcodeId, 'barcode', markerWidth);
+    state.barcodeMarkers[barcodeId] = createTrackedMarker(barcodeId, markerWidth);
 }
 
-/**
- * Shared by `trackMarker` and `trackBarcodeMarker`: both families share one
- * integer ID space, so registering an ID under one type must not silently
- * overwrite a registration of the other.
- *
- * @throws {ARToolKitError} if `id` is already registered under a different type.
- */
-function registerMarker(
-    state: ARToolKitState,
-    id: number,
-    type: MarkerType,
-    markerWidth: number
-): void {
-    const existing = state.markers[id];
-    if (existing && existing.type !== type) {
-        throw new ARToolKitError(
-            `Marker ID ${id} is already registered as a ${existing.type} marker.`
-        );
-    }
-
-    state.markers[id] = {
+/** Allocates a marker's tracking state and its reusable pose buffers. */
+function createTrackedMarker(id: number, markerWidth: number): TrackedMarkerState {
+    return {
         id,
-        type,
         markerWidth,
         inPrevious: false,
         inCurrent: false,
@@ -171,10 +161,12 @@ function detectMarkersInFrame(state: ARToolKitState, videoFrame: Uint8ClampedArr
 
 /** Rolls this frame's visibility into last frame's, so continuity survives. */
 function advanceTrackingState(state: ARToolKitState): void {
-    for (const id in state.markers) {
-        const marker = state.markers[id];
-        marker.inPrevious = marker.inCurrent;
-        marker.inCurrent = false;
+    for (const registry of [state.patternMarkers, state.barcodeMarkers]) {
+        for (const id in registry) {
+            const marker = registry[id];
+            marker.inPrevious = marker.inCurrent;
+            marker.inCurrent = false;
+        }
     }
 }
 
@@ -189,10 +181,14 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
         // through `info.id` — the engine leaves that one unassigned in the
         // combined modes. Both are checked because one square can match a
         // pattern and a barcode in the same frame.
-        const pattern = matchFamily(state, candidate, info.idPatt, 'pattern');
+        const pattern = matchFamily(
+            state.patternMarkers, state, candidate, info.idPatt, 'pattern'
+        );
         if (pattern) detected.push(pattern);
 
-        const barcode = matchFamily(state, candidate, info.idMatrix, 'barcode');
+        const barcode = matchFamily(
+            state.barcodeMarkers, state, candidate, info.idMatrix, 'barcode'
+        );
         if (barcode) detected.push(barcode);
     }
 
@@ -200,10 +196,14 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
 }
 
 /**
- * Resolves one detection family against the registry, returning its pose if a
- * marker of that family is registered under the reported ID.
+ * Resolves one detection family against its own registry, returning the pose
+ * if a marker is registered under the reported ID.
+ *
+ * Each family is looked up only in its own registry, so an ID reported by one
+ * can never resolve to a marker registered in the other.
  */
 function matchFamily(
+    registry: Record<number, TrackedMarkerState>,
     state: ARToolKitState,
     candidate: number,
     id: number,
@@ -211,18 +211,15 @@ function matchFamily(
 ): MarkerPose | undefined {
     if (id === UNRECOGNISED_MARKER_ID) return undefined;
 
-    // The type must match, not just the ID: both families share one registry
-    // keyed by integer, so a barcode ID of 5 must not resolve to a pattern
-    // marker that happens to be registered as 5.
-    const tracked = state.markers[id];
-    if (!tracked || tracked.type !== type) return undefined;
+    const tracked = registry[id];
+    if (!tracked) return undefined;
 
     tracked.inCurrent = true;
     updatePose(state, candidate, tracked);
 
     return {
         id: tracked.id,
-        type: tracked.type,
+        type,
         matrix: tracked.matrix,
         matrixGL: tracked.matrixGL,
     };
@@ -234,13 +231,20 @@ function matchFamily(
  * Fires once per disappearance: the following frame rolls `inCurrent` (false)
  * into `inPrevious`, so the condition no longer holds.
  */
-function collectLostMarkers(state: ARToolKitState): number[] {
-    const lost: number[] = [];
+function collectLostMarkers(state: ARToolKitState): LostMarker[] {
+    const lost: LostMarker[] = [];
 
-    for (const id in state.markers) {
-        const marker = state.markers[id];
-        if (marker.inPrevious && !marker.inCurrent) {
-            lost.push(marker.id);
+    const families: [Record<number, TrackedMarkerState>, MarkerType][] = [
+        [state.patternMarkers, 'pattern'],
+        [state.barcodeMarkers, 'barcode'],
+    ];
+
+    for (const [registry, type] of families) {
+        for (const id in registry) {
+            const marker = registry[id];
+            if (marker.inPrevious && !marker.inCurrent) {
+                lost.push({ id: marker.id, type });
+            }
         }
     }
 
