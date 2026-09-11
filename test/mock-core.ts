@@ -131,9 +131,9 @@ export function createMockState(options: MockCoreOptions = {}): {
             getMarkerNum: () => currentIds().length,
             // Reports each visible ID in *both* families. The real engine
             // usually populates only one, but reporting both is the strictest
-            // input the library can get: it forces `matchFamily`'s type check
-            // to do the disambiguating, so dropping that check would surface
-            // here as duplicate detections rather than passing silently.
+            // input the library can get: only the registry a family is looked
+            // up in separates them, so resolving one family against the other's
+            // registry surfaces here as a wrong or duplicated detection.
             // `id` is deliberately -1, as the engine reports it in the
             // combined detection modes. Any regression to reading it instead
             // of the per-mode fields then fails every detection test loudly,

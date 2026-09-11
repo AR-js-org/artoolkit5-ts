@@ -33,7 +33,7 @@ examples/
 | `createARToolKitState(w, h, cameraUrl, wasmUrl?)` | Async init — returns `ARToolKitState` |
 | `loadPatternMarker(state, markerUrl)` | Async — downloads `.patt`, returns marker ID |
 | `trackMarker(state, pattId, markerWidth?)` | Registers a marker for tracking |
-| `processFrame(state, videoFrame)` | Per-frame detection — returns `MarkerPose[]` |
+| `processFrame(state, videoFrame)` | Per-frame detection — returns `{ detected, lost }` |
 | `transMatToGLMat(transMat)` | 3×4 → 4×4 column-major Float32Array |
 | `getCameraProjectionMatrix(state)` | Returns camera lens matrix from ARToolKit core |
 
@@ -77,15 +77,17 @@ The old ARToolKit.js used a "God Object" pattern (`ARController` class), which:
 // 1. Create state once
 const state = await createARToolKitState(width, height, cameraUrl, wasmUrl);
 
-// 2. Register markers (sync, updates state.markers dictionary)
+// 2. Register markers. Pattern and barcode markers live in separate
+//    registries (state.patternMarkers / state.barcodeMarkers) and have
+//    independent ID spaces, so the same integer in each is two markers.
 const id = await loadPatternMarker(state, patternUrl);
 trackMarker(state, id, markerWidth);
 
 // 3. Per-frame: call pure function, get results
-const detectedMarkers = processFrame(state, imageData);
+const { detected, lost } = processFrame(state, imageData);
 
 // 4. Update your scene (no side effects in the library)
-detectedMarkers.forEach(marker => {
+detected.forEach(marker => {
   mesh.matrix.set(marker.matrixGL);
 });
 ```
@@ -106,7 +108,7 @@ getUserMedia → canvas pixel extraction (Uint8ClampedArray)
     → core.passVideoData() + core.detectMarker()
     → per-marker: getTransMatSquare[Cont] → read from HEAPF64
     → transMatToGLMat + arglCameraViewRHf
-  → MarkerPose[] (id, matrix 3×4, matrixGL 4×4)
+  → { detected: MarkerPose[], lost: LostMarker[] }  (id, type, matrix 3×4, matrixGL 4×4)
     → Your code: renderer.render() or update THREE.js objects
 ```
 
