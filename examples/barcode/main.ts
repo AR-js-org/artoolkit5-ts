@@ -92,7 +92,16 @@ const MARKER_PATTERN_URL = '../webcam/data/patt.hiro';
 // example.
 const BARCODE_ID = 5;
 
-const DETECTION_MODES: DetectionMode[] = ['matrix', 'mono+matrix', 'color+matrix'];
+// All five modes, so a marker can be compared single-family against combined
+// on one page. That contrast is the point of this example: it is what shows
+// `'matrix'` ignoring a pattern marker, and the combined modes finding both.
+const DETECTION_MODES: DetectionMode[] = [
+    'matrix',
+    'mono+matrix',
+    'color+matrix',
+    'mono',
+    'color',
+];
 
 async function main(): Promise<void> {
     const stage = getStage();
@@ -137,7 +146,7 @@ async function main(): Promise<void> {
             controlPanel.updateLog(detected);
 
             if (lost.length > 0) {
-                console.log('marker lost:', lost.join(', '));
+                console.log('marker lost:', lost.map((m) => `${m.type} id ${m.id}`).join(', '));
             }
 
             showMarker(scene.cube, detected[0]);
