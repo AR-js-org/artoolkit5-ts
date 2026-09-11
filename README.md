@@ -135,10 +135,17 @@ Detecting a barcode marker also requires `configureDetector` to have set a matri
 Pattern and barcode markers have **independent ID spaces**, and are kept in separate registries. Pattern IDs are assigned by the engine starting at 0; barcode IDs are encoded in the marker's own geometry and chosen by whoever printed it. So `7` in one family is unrelated to `7` in the other, and both can be tracked at once:
 
 ```typescript
-trackMarker(state, 7);         // pattern 7  -> state.patternMarkers
-trackBarcodeMarker(state, 7);  // barcode 7  -> state.barcodeMarkers
-// both tracked; detections and losses carry `type` to tell them apart
+// Pattern IDs come from the engine — never hardcode them
+const patternId = await loadPatternMarker(state, './data/patt.hiro');
+trackMarker(state, patternId);           // -> state.patternMarkers
+
+// Barcode IDs are yours: encoded in the marker you printed
+trackBarcodeMarker(state, 0);            // -> state.barcodeMarkers
 ```
+
+If `patternId` also happens to be `0` — and it usually is, since the engine
+assigns from zero — both are tracked independently. Detections and losses
+carry `type`, so you can always tell which family a result came from.
 
 The engine reports each family through its own field (`idPatt` / `idMatrix`), so a detection is only ever matched against the registry it belongs to.
 
@@ -224,7 +231,7 @@ interface MarkerPose {
 }
 ```
 
-`type` comes from the registry, not the engine: `getMarkerInfo` cannot distinguish a pattern marker from a barcode marker (`idPatt`/`idMatrix` are not bound), so it is read from whichever of `trackMarker`/`trackBarcodeMarker` registered that ID. That is also why the two share one ID space rather than two.
+`type` says which family a detection came from. The engine reports the two through separate fields — `idPatt` for pattern markers, `idMatrix` for barcode markers — and each is matched only against its own registry, so `type` follows from which registry answered rather than from any value the engine supplies. This is also why the families have independent ID spaces: the same integer in each is two unrelated markers.
 
 ## 🖼️ Feeding frames from an ImageBitmap
 
