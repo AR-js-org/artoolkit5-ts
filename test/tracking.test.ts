@@ -44,9 +44,8 @@ describe('trackMarker', () => {
         const { state } = createMockState();
         trackMarker(state, MARKER_ID, 2.5);
 
-        const tracked = state.markers[MARKER_ID];
+        const tracked = state.patternMarkers[MARKER_ID];
         expect(tracked.id).toBe(MARKER_ID);
-        expect(tracked.type).toBe('pattern');
         expect(tracked.markerWidth).toBe(2.5);
         expect(tracked.matrix).toHaveLength(12);
         expect(tracked.matrixGL).toHaveLength(16);
@@ -55,7 +54,7 @@ describe('trackMarker', () => {
     it('defaults markerWidth to 1', () => {
         const { state } = createMockState();
         trackMarker(state, MARKER_ID);
-        expect(state.markers[MARKER_ID].markerWidth).toBe(1);
+        expect(state.patternMarkers[MARKER_ID].markerWidth).toBe(1);
     });
 
     it('throws once the state is disposed', () => {
@@ -70,9 +69,8 @@ describe('trackBarcodeMarker', () => {
         const { state } = createMockState();
         trackBarcodeMarker(state, MARKER_ID, 2.5);
 
-        const tracked = state.markers[MARKER_ID];
+        const tracked = state.barcodeMarkers[MARKER_ID];
         expect(tracked.id).toBe(MARKER_ID);
-        expect(tracked.type).toBe('barcode');
         expect(tracked.markerWidth).toBe(2.5);
         expect(tracked.matrix).toHaveLength(12);
         expect(tracked.matrixGL).toHaveLength(16);
@@ -81,7 +79,7 @@ describe('trackBarcodeMarker', () => {
     it('defaults markerWidth to 1', () => {
         const { state } = createMockState();
         trackBarcodeMarker(state, MARKER_ID);
-        expect(state.markers[MARKER_ID].markerWidth).toBe(1);
+        expect(state.barcodeMarkers[MARKER_ID].markerWidth).toBe(1);
     });
 
     it('throws once the state is disposed', () => {
@@ -91,39 +89,54 @@ describe('trackBarcodeMarker', () => {
     });
 });
 
-describe('marker type collisions', () => {
-    // The engine distinguishes the families (idPatt vs idMatrix), but the
-    // registry is a single map keyed by integer ID, so one ID cannot hold
-    // both a pattern and a barcode registration at once. Registering an ID
-    // under one type must not silently overwrite the other.
+describe('independent ID spaces', () => {
+    // Pattern IDs are assigned by the engine starting at 0; barcode IDs are
+    // chosen by whoever printed the marker. `7` in one is unrelated to `7` in
+    // the other, so both must be registrable and trackable simultaneously.
 
-    it('trackBarcodeMarker throws if the ID is already a pattern marker', () => {
-        const { state } = createMockState();
-        trackMarker(state, MARKER_ID);
-
-        expect(() => trackBarcodeMarker(state, MARKER_ID)).toThrow(
-            /Marker ID 7 is already registered as a pattern marker/
-        );
-    });
-
-    it('trackMarker throws if the ID is already a barcode marker', () => {
-        const { state } = createMockState();
-        trackBarcodeMarker(state, MARKER_ID);
-
-        expect(() => trackMarker(state, MARKER_ID)).toThrow(
-            /Marker ID 7 is already registered as a barcode marker/
-        );
-    });
-
-    it('re-registering the same ID under the same type is not a collision', () => {
+    it('registers a pattern and a barcode under the same ID', () => {
         const { state } = createMockState();
         trackMarker(state, MARKER_ID, 1.0);
-        expect(() => trackMarker(state, MARKER_ID, 2.0)).not.toThrow();
-        expect(state.markers[MARKER_ID].markerWidth).toBe(2.0);
+        trackBarcodeMarker(state, MARKER_ID, 2.0);
 
-        trackBarcodeMarker(state, MARKER_ID + 1, 1.0);
-        expect(() => trackBarcodeMarker(state, MARKER_ID + 1, 2.0)).not.toThrow();
-        expect(state.markers[MARKER_ID + 1].markerWidth).toBe(2.0);
+        expect(state.patternMarkers[MARKER_ID].markerWidth).toBe(1.0);
+        expect(state.barcodeMarkers[MARKER_ID].markerWidth).toBe(2.0);
+    });
+
+    it('detects both families under the same ID in a single frame', () => {
+        const { state } = createMockState({ visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+
+        expect(detected.map((m) => m.type).sort()).toEqual(['barcode', 'pattern']);
+        expect(detected.every((m) => m.id === MARKER_ID)).toBe(true);
+    });
+
+    it('reports loss per family, so a shared ID stays unambiguous', () => {
+        const { state } = createMockState({ visibleIds: [[MARKER_ID], []] });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+
+        processFrame(state, FRAME);
+        const { lost } = processFrame(state, FRAME);
+
+        expect(lost).toEqual([
+            { id: MARKER_ID, type: 'pattern' },
+            { id: MARKER_ID, type: 'barcode' },
+        ]);
+    });
+
+    it('re-registering the same ID in the same family replaces it', () => {
+        const { state } = createMockState();
+        trackMarker(state, MARKER_ID, 1.0);
+        trackMarker(state, MARKER_ID, 2.0);
+        expect(state.patternMarkers[MARKER_ID].markerWidth).toBe(2.0);
+
+        trackBarcodeMarker(state, MARKER_ID, 1.0);
+        trackBarcodeMarker(state, MARKER_ID, 2.0);
+        expect(state.barcodeMarkers[MARKER_ID].markerWidth).toBe(2.0);
     });
 });
 
@@ -144,7 +157,7 @@ describe('processFrame visibility transitions', () => {
             { detected: [], lost: [] },          // never seen: no spurious loss
             { detected: [MARKER_ID], lost: [] }, // found
             { detected: [MARKER_ID], lost: [] }, // still visible
-            { detected: [], lost: [MARKER_ID] }, // lost, reported once
+            { detected: [], lost: [{ id: MARKER_ID, type: 'pattern' }] }, // lost, once
             { detected: [], lost: [] },          // stays absent, not repeated
             { detected: [MARKER_ID], lost: [] }, // found again
         ]);

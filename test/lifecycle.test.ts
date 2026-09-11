@@ -57,7 +57,8 @@ describe('disposeARToolKitState', () => {
         disposeARToolKitState(state);
 
         expect(state.disposed).toBe(true);
-        expect(state.markers).toEqual({});
+        expect(state.patternMarkers).toEqual({});
+        expect(state.barcodeMarkers).toEqual({});
     });
 
     it('is idempotent, so a second call frees nothing twice', () => {

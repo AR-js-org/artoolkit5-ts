@@ -92,17 +92,31 @@ export interface FrameResult {
     /** Markers visible in this frame, with their poses. */
     detected: MarkerPose[];
     /**
-     * IDs of markers visible in the previous frame but not this one.
+     * Markers visible in the previous frame but not this one.
      *
      * Reported exactly once, on the frame the marker disappears.
+     *
+     * Carries `type` as well as `id` because the two families have
+     * independent ID spaces: a pattern marker and a barcode marker may both
+     * be registered as `5`, and an ID alone could not say which was lost.
      */
-    lost: number[];
+    lost: LostMarker[];
 }
 
-/** Per-marker tracking state, owned by {@link ARToolKitState}. */
-export interface TrackedMarkerState {
+/** A marker that was visible in the previous frame and is not in this one. */
+export interface LostMarker {
     id: number;
     type: MarkerType;
+}
+
+/**
+ * Per-marker tracking state, owned by {@link ARToolKitState}.
+ *
+ * Carries no `type`: which registry a marker lives in already determines its
+ * family, so storing it again would allow the two to disagree.
+ */
+export interface TrackedMarkerState {
+    id: number;
     markerWidth: number;
     /** Visible in the previous frame — enables continuous tracking. */
     inPrevious: boolean;
@@ -204,8 +218,21 @@ export interface ARToolKitState {
     readonly core: ARToolKitCore;
     readonly width: number;
     readonly height: number;
-    /** Registered markers, keyed by engine-assigned ID. */
-    markers: Record<number, TrackedMarkerState>;
+    /**
+     * Pattern markers, keyed by the engine-assigned ID `loadPatternMarker`
+     * returned — matched against `getMarkerInfo`'s `idPatt`.
+     */
+    patternMarkers: Record<number, TrackedMarkerState>;
+    /**
+     * Barcode markers, keyed by the ID encoded in the marker's own geometry —
+     * matched against `getMarkerInfo`'s `idMatrix`.
+     *
+     * Separate from {@link ARToolKitState.patternMarkers} because the two
+     * families occupy independent ID spaces: pattern IDs are assigned by the
+     * engine starting at 0, barcode IDs are chosen by whoever printed the
+     * marker, and `5` in one is unrelated to `5` in the other.
+     */
+    barcodeMarkers: Record<number, TrackedMarkerState>;
     /**
      * Set by `disposeARToolKitState`. Once true the C++ instance is gone and
      * every operation on this state throws rather than reaching freed memory.
