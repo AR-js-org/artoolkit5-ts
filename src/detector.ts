@@ -54,7 +54,7 @@ import { ARToolKitError, assertNotDisposed } from './errors';
  * next call rather than requiring a separate step to take effect.
  *
  * @throws {ARToolKitError} if the state has been disposed, if a string option
- *   is not one of its documented values, or if `threshold` or `pattRatio` is
+ *   is not one of its documented values, or if `threshold` or `patternRatio` is
  *   outside the range the engine accepts.
  */
 export function configureDetector(state: ARToolKitState, opts: DetectorOptions): void {
@@ -86,8 +86,8 @@ export function configureDetector(state: ARToolKitState, opts: DetectorOptions):
         state.core.setImageProcMode(lookUp(IMAGE_PROC_MODES, opts.imageProcMode, 'imageProcMode'));
     }
 
-    if (opts.pattRatio !== undefined) {
-        state.core.setPattRatio(validatePattRatio(opts.pattRatio));
+    if (opts.patternRatio !== undefined) {
+        state.core.setPattRatio(validatePatternRatio(opts.patternRatio));
     }
 
     if (opts.nearPlane !== undefined) {
@@ -134,16 +134,16 @@ function validateThreshold(threshold: number): number {
  * without any indication why.
  *
  * `Number.isFinite` guards against `NaN` and `Infinity`, neither of which
- * `pattRatio <= 0 || pattRatio >= 1` catches on its own — every comparison
+ * `patternRatio <= 0 || patternRatio >= 1` catches on its own — every comparison
  * against `NaN` is `false`, so it passes both halves of that check. Unlike
  * `threshold`, a fraction is exactly what this option expects, so this stays
  * a finiteness check rather than an integer one.
  */
-function validatePattRatio(pattRatio: number): number {
-    if (!Number.isFinite(pattRatio) || pattRatio <= 0 || pattRatio >= 1) {
+function validatePatternRatio(patternRatio: number): number {
+    if (!Number.isFinite(patternRatio) || patternRatio <= 0 || patternRatio >= 1) {
         throw new ARToolKitError(
-            `Invalid value ${pattRatio} for 'pattRatio'. Must be a finite number greater than 0 and less than 1.`
+            `Invalid value ${patternRatio} for 'patternRatio'. Must be a finite number greater than 0 and less than 1.`
         );
     }
-    return pattRatio;
+    return patternRatio;
 }

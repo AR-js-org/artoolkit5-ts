@@ -55,13 +55,13 @@ Reaching us transitively via `artoolkit5-wasm@0.2.0`. 62 constants total, includ
 | Gap | Evidence | Handling |
 |---|---|---|
 | ~~`arLabelingMode` constants not generated~~ **Resolved** | Filed as [artoolkit5-constants#6](https://github.com/AR-js-org/artoolkit5-constants/issues/6), shipped in `constants@0.3.0` | `labelingMode` is back in scope for #8 — see §4.2 and Decision 9 |
-| `AR_LABELING_THRESH_MODE_AUTO_ADAPTIVE` silently degrades to `MANUAL` | `AR_DISABLE_THRESH_MODE_AUTO_ADAPTIVE=1` in `config.h` compiles its `case` out; falls through to `default:` | `'auto-adaptive'` omitted from the union — still true, this is an upstream build flag, not a constants-generation gap |
+| `AR_LABELING_THRESH_MODE_AUTO_ADAPTIVE` silently degrades to `MANUAL` | `AR_DISABLE_THRESH_MODE_AUTO_ADAPTIVE=1` in `config.h` compiles its `case` out; falls through to `default:` | `'auto_adaptive'` omitted from the union — still true, this is an upstream build flag, not a constants-generation gap |
 
 ### Numeric ranges
 
 | Value | Rule | Source |
 |---|---|---|
-| `pattRatio` | `> 0.0` and `< 1.0`, exclusive; default `0.5` | `arCreateHandle.c:363` returns `-1` outside this |
+| `patternRatio` | `> 0.0` and `< 1.0`, exclusive; default `0.5` | `arCreateHandle.c:363` returns `-1` outside this |
 | `threshold` | `0`–`255`; default `100` | `AR_DEFAULT_LABELING_THRESH` |
 
 ---
@@ -87,13 +87,13 @@ const DETECTION_MODES: Record<DetectionMode, number> = {
     color: AR_TEMPLATE_MATCHING_COLOR,
     mono: AR_TEMPLATE_MATCHING_MONO,
     matrix: AR_MATRIX_CODE_DETECTION,
-    'color+matrix': AR_TEMPLATE_MATCHING_COLOR_AND_MATRIX,
-    'mono+matrix': AR_TEMPLATE_MATCHING_MONO_AND_MATRIX,
+    'color_and_matrix': AR_TEMPLATE_MATCHING_COLOR_AND_MATRIX,
+    'mono_and_matrix': AR_TEMPLATE_MATCHING_MONO_AND_MATRIX,
 };
 
 const LABELING_MODES: Record<LabelingMode, number> = {
-    'white-region': AR_LABELING_WHITE_REGION,
-    'black-region': AR_LABELING_BLACK_REGION,
+    'white_region': AR_LABELING_WHITE_REGION,
+    'black_region': AR_LABELING_BLACK_REGION,
 };
 ```
 
@@ -103,25 +103,25 @@ Typing these as `Record<Union, number>` makes the compiler enforce total coverag
 
 ```ts
 export type DetectionMode =
-    | 'color' | 'mono' | 'matrix' | 'color+matrix' | 'mono+matrix';
+    | 'color' | 'mono' | 'matrix' | 'color_and_matrix' | 'mono_and_matrix';
 
 export type MatrixCodeType =
-    | '3x3' | '3x3_parity65' | '3x3_hamming63'
-    | '4x4' | '4x4_bch_13_9_3' | '4x4_bch_13_5_5'
-    | '5x5' | '5x5_bch_22_7_7' | '5x5_bch_22_12_5'
+    | '3x3' | '3x3_PARITY65' | '3x3_HAMMING63'
+    | '4x4' | '4x4_BCH_13_9_3' | '4x4_BCH_13_5_5'
+    | '5x5' | '5x5_BCH_22_7_7' | '5x5_BCH_22_12_5'
     | '6x6' | 'global_id';
 
 export type ThresholdMode =
     | 'manual'          // 0
-    | 'auto-median'     // 1
-    | 'auto-otsu'       // 2
-    | 'auto-bracketing'; // 4
-    // 'auto-adaptive' (3) deliberately absent: compiled out upstream
+    | 'auto_median'     // 1
+    | 'auto_otsu'       // 2
+    | 'auto_bracketing'; // 4
+    // 'auto_adaptive' (3) deliberately absent: compiled out upstream
 
 export type ImageProcMode = 'frame' | 'field';
 
-export type LabelingMode = 'white-region' | 'black-region';
-// 'black-region' — black-bordered markers on a white background — is the engine default.
+export type LabelingMode = 'white_region' | 'black_region';
+// 'black_region' — black-bordered markers on a white background — is the engine default.
 
 export interface DetectorOptions {
     detectionMode?: DetectionMode;
@@ -130,13 +130,13 @@ export interface DetectorOptions {
     thresholdMode?: ThresholdMode;
     labelingMode?: LabelingMode;
     imageProcMode?: ImageProcMode;
-    pattRatio?: number;
+    patternRatio?: number;
     nearPlane?: number;
     farPlane?: number;
 }
 ```
 
-`labelingMode` selects between black-bordered markers on a white background (`'black-region'`, the engine default) and white-bordered markers on a black background (`'white-region'`). It was omitted from the original draft of this design because `artoolkit5-constants@0.2.0` did not generate its values; `0.3.0` does (see §2, Decision 9).
+`labelingMode` selects between black-bordered markers on a white background (`'black_region'`, the engine default) and white-bordered markers on a black background (`'white_region'`). It was omitted from the original draft of this design because `artoolkit5-constants@0.2.0` did not generate its values; `0.3.0` does (see §2, Decision 9).
 
 ### 4.3 `configureDetector(state, opts)`
 
@@ -196,7 +196,7 @@ The suite runs against a **mocked core**. It can prove `detectionMode: 'matrix'`
 | 2 | String unions publicly, constants internally | Re-export constants; accept union or raw int | Keeps C naming out of a TypeScript API, gives compile-time typo errors, and stays stable if upstream integers change. The original rationale (incomplete constants) is obsolete; the ergonomic one is not. |
 | 3 | One flat registry, collisions rejected at registration | Separate namespaces per family; single-mode only | Makes IDs unique, which is what makes `type` derivable and correct in combined mode. Avoids a breaking change to `ARToolKitState` and does not merely relocate the ambiguity. |
 | 4 | `constants` becomes a direct dependency | Keep it transitive; devDependency | We import it directly, so declaring it is honest. Zero extra install cost through deduplication. |
-| 5 | `'auto-adaptive'` omitted from the union | Offer and throw; offer with a caveat | A mode that silently degrades to `MANUAL` is the precise failure class our tests target. Re-adding it later is non-breaking. |
+| 5 | `'auto_adaptive'` omitted from the union | Offer and throw; offer with a caveat | A mode that silently degrades to `MANUAL` is the precise failure class our tests target. Re-adding it later is non-breaking. |
 | 6 | `labelingMode` omitted; constants issue filed upstream | Add constants upstream first; hardcode `0`/`1` | Hardcoding would break the single-source-of-truth rule that the mapping layer exists to enforce. Blocking on a cross-repo release would stall both issues for a secondary option. |
 | 7 | `trackBarcodeMarker`, not `loadBarcodeMarker` | The name in #9; extending `trackMarker` | It performs no I/O and no C++ call — it is a registry operation, which is exactly what `trackMarker` is. Avoids the only synchronous `load*` in the API. |
 | 8 | Combined modes ship, verified in the example | Withhold until `idMatrix` is bound | Decision 3 makes `type` correct without `idMatrix`. Verification happens against the real engine before any claim is made. |
@@ -237,7 +237,7 @@ Brainstormed with `/brainstorming` before implementation, per this project's con
 
 ### Verified before designing, not assumed
 
-Went in suspecting `'color+matrix'` might be a non-starter, since this library hardcodes luma conversion (`CONVERT_TO_LUMA = true` in `tracking.ts`). Checked the C++ before letting that shape the design: `ARToolKitCore::passVideoData` computes luma **in addition to** retaining the full RGBA frame, and `detectMarker()` passes both to the engine (`buff.buff` = RGBA, `buff.buffLuma` = luma). Default `pixFormat` is `AR_PIXEL_FORMAT_RGBA`, matching what a browser's `getImageData()` provides, and `arPattGetID.c`'s color-extraction path explicitly handles `AR_PIXEL_FORMAT_RGBA`. So there is no structural reason `'color+matrix'` can't work through this wrapper — that hypothesis was wrong, corrected before it reached the design.
+Went in suspecting `'color_and_matrix'` might be a non-starter, since this library hardcodes luma conversion (`CONVERT_TO_LUMA = true` in `tracking.ts`). Checked the C++ before letting that shape the design: `ARToolKitCore::passVideoData` computes luma **in addition to** retaining the full RGBA frame, and `detectMarker()` passes both to the engine (`buff.buff` = RGBA, `buff.buffLuma` = luma). Default `pixFormat` is `AR_PIXEL_FORMAT_RGBA`, matching what a browser's `getImageData()` provides, and `arPattGetID.c`'s color-extraction path explicitly handles `AR_PIXEL_FORMAT_RGBA`. So there is no structural reason `'color_and_matrix'` can't work through this wrapper — that hypothesis was wrong, corrected before it reached the design.
 
 Also confirmed: matrix-code (barcode) detection reads from a code path independent of the `COLOR`/`MONO` choice in `arPattGetID.c` — only the *pattern* half of detection is actually affected by which combined mode is selected. Whether the `.patt` reference format matches correctly under `COLOR` vs `MONO` extraction is not resolvable by reading more source; that is exactly what running the real test determines.
 
@@ -246,7 +246,7 @@ Also confirmed: matrix-code (barcode) detection reads from a code path independe
 Extends `examples/barcode/` in place (no new example, no shared module between examples — each stays self-contained, matching #31's precedent):
 
 - Both markers registered unconditionally at startup — the existing Hiro pattern marker (`loadPatternMarker` + `trackMarker`) alongside the existing `3x3` barcode marker. Harmless under plain `'matrix'` mode: the template-matching pass simply never runs for that mode, so the pattern marker is registered but never matched until a combined mode is selected.
-- A `detectionMode` dropdown (`'matrix'` / `'mono+matrix'` / `'color+matrix'`, defaulting to `'matrix'`), applying changes through one `applyDetectionMode(state, mode)` function shared with the initial call, so the default and the switch can't drift apart.
+- A `detectionMode` dropdown (`'matrix'` / `'mono_and_matrix'` / `'color_and_matrix'`, defaulting to `'matrix'`), applying changes through one `applyDetectionMode(state, mode)` function shared with the initial call, so the default and the switch can't drift apart.
 - A text log, updated every frame from the full `detected` array (`id N (pattern|barcode)`, comma-separated, or `none`) — not a second 3D object. Chosen as the verification signal specifically because it's unambiguous: reading two labelled entries proves both were found, with no risk of misreading overlapping or mis-posed 3D geometry. The log runs in every mode, not just combined ones, so the same line visibly grows from one entry to two the moment the mode changes.
 - `examples/barcode/`'s name and `examples/index.html`'s description stay as they are, with the on-page copy updated to mention combined-mode testing. Combined detection is still fundamentally a barcode-detection question — the modes exist to add matrix detection *on top of* pattern detection — so the folder's subject has grown by one comparison feature, not changed.
 
@@ -255,7 +255,7 @@ Extends `examples/barcode/` in place (no new example, no shared module between e
 | # | Decision | Alternatives considered | Why |
 |---|---|---|---|
 | 1 | Extend `examples/barcode/` in place | New `examples/combined/` | Least duplication; natural single page for "compare without restarting", which is what the issue asks for |
-| 2 | Test both `'mono+matrix'` and `'color+matrix'` | `'mono+matrix'` only | Genuinely separate code paths (verified in `arPattGetID.c`); marginal extra cost once the switcher exists |
+| 2 | Test both `'mono_and_matrix'` and `'color_and_matrix'` | `'mono_and_matrix'` only | Genuinely separate code paths (verified in `arPattGetID.c`); marginal extra cost once the switcher exists |
 | 3 | Text log, not a second 3D object | Second cube/sphere for the barcode marker | Unambiguous verification signal; avoids extending `showMarker` for what is a diagnostic tool, not a demo |
 | 4 | Manual dropdown, not auto-cycling | Timer-driven mode cycling every N seconds | Verification needs a mode held steady while positioning markers in frame, not one that changes underneath the tester |
 | 5 | Both markers registered unconditionally at startup | Register conditionally per mode | Simpler; inert in `'matrix'` mode rather than actually harmful |
@@ -267,7 +267,7 @@ Extends `examples/barcode/` in place (no new example, no shared module between e
 
 **Resolved.** The finding below stood for one release cycle; the fix landed upstream and is verified. See [Resolution](#resolution) at the end of this section.
 
-**Combined modes did not work, and could not be fixed in this repository.** Verified on a real camera with a Hiro pattern marker and a 3x3 barcode marker (ID 5): `'matrix'` alone detects the barcode correctly, while `'mono+matrix'` and `'color+matrix'` detect nothing — or intermittently render a small, flashing, mispositioned cube.
+**Combined modes did not work, and could not be fixed in this repository.** Verified on a real camera with a Hiro pattern marker and a 3x3 barcode marker (ID 5): `'matrix'` alone detects the barcode correctly, while `'mono_and_matrix'` and `'color_and_matrix'` detect nothing — or intermittently render a small, flashing, mispositioned cube.
 
 Root cause. `ARMarkerInfo` carries three families of result fields, and `ar.h:197-215` documents their validity precisely: `.id`/`.dir`/`.cf` are valid only when detection is pattern-only **or** matrix-only, *"but not both"*; `.idPatt`/`.dirPatt`/`.cfPatt` are valid whenever the mode *includes* pattern matching, and `.idMatrix`/`.dirMatrix`/`.cfMatrix` whenever it *includes* matrix detection. In the two combined modes the engine populates the latter two families and never assigns `.id`. This is deliberate — with both families active there is no single correct answer to "what is this marker's ID" — and it is implemented consistently in `arGetMarkerInfo.c` and in both of `arDetectMarker.c`'s combined-mode branches (history carryover at L251-276, confidence cutoff at L352-363), neither of which touches `.id`.
 
@@ -279,7 +279,7 @@ Corrected mid-investigation: this was first diagnosed as a missing `else` branch
 
 Fixed upstream in [`@ar-js-org/artoolkit5-wasm@0.3.0`](https://github.com/AR-js-org/artoolkit5-wasm/releases) — issue [artoolkit5-wasm#23](https://github.com/AR-js-org/artoolkit5-wasm/issues/23), PR [#25](https://github.com/AR-js-org/artoolkit5-wasm/pull/25), released in [#28](https://github.com/AR-js-org/artoolkit5-wasm/pull/28). `getMarkerInfo()` now binds all six per-mode fields, each reported as its real value only in the modes that populate it and `-1` otherwise.
 
-One thing that shaped the upstream fix and is worth recording, because it is the non-obvious half: **the hazard is symmetric.** Binding all six fields unconditionally would have traded one bug for two — in pattern-only modes `arPattGetID.c:236` skips the matrix block entirely, leaving `idMatrix` uninitialised, and in matrix-only mode `:279` skips the template block, leaving `idPatt` uninitialised. Reading `idMatrix` under `'mono'` would have been exactly the same class of defect as reading `.id` under `'mono+matrix'`. The gating predicates upstream are transcribed from the engine's own branch conditions rather than written independently, so they cannot drift from the behaviour they describe.
+One thing that shaped the upstream fix and is worth recording, because it is the non-obvious half: **the hazard is symmetric.** Binding all six fields unconditionally would have traded one bug for two — in pattern-only modes `arPattGetID.c:236` skips the matrix block entirely, leaving `idMatrix` uninitialised, and in matrix-only mode `:279` skips the template block, leaving `idPatt` uninitialised. Reading `idMatrix` under `'mono'` would have been exactly the same class of defect as reading `.id` under `'mono_and_matrix'`. The gating predicates upstream are transcribed from the engine's own branch conditions rather than written independently, so they cannot drift from the behaviour they describe.
 
 On this side, `collectDetectedPoses` now resolves each family through the field that produced it, and checks the registered `type` as well as the ID — the registry is one map keyed by integer, so a barcode ID of 5 must not resolve to a pattern marker registered as 5. Both properties are covered by mutation testing: reading `info.id` again breaks 6 tests, and dropping the type check breaks 2.
 
@@ -293,7 +293,7 @@ Reference implementation. AR.js reads `marker.idPatt` for pattern markers and `m
 
 Consequences for this design:
 
-- **R1 is realised.** `'color+matrix'` and `'mono+matrix'` stay in the `DetectionMode` union but must not be documented as supported until the binding is fixed. Nothing has shipped, so no consumer is affected yet.
+- **R1 is realised.** `'color_and_matrix'` and `'mono_and_matrix'` stay in the `DetectionMode` union but must not be documented as supported until the binding is fixed. Nothing has shipped, so no consumer is affected yet.
 - **The #33 branch is held, not merged.** Merging would publish two modes that silently return nothing.
 - **A second gap surfaced.** Confidence is not exposed at all, so consumers cannot filter above the engine's built-in `AR_CONFIDENCE_CUTOFF_DEFAULT` of `0.5` (`arConfig.h:120`). AR.js defaults its own `minConfidence` to `0.6`. This matters most in combined mode, where template matching runs against every square including barcode ones. Needs the same binding change.
 - **`globalID` is unreachable too.** `matrixCodeType: 'global_id'` is selectable but its 64-bit result is not bound, so that code type cannot currently be used.

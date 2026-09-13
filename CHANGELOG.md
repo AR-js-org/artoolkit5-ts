@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `configureDetector(state, opts)` — detector tuning: `detectionMode`, `matrixCodeType`,
-  `threshold`, `thresholdMode`, `labelingMode`, `imageProcMode`, `pattRatio`,
+  `threshold`, `thresholdMode`, `labelingMode`, `imageProcMode`, `patternRatio`,
   `nearPlane`, `farPlane`. Applies only the keys present, so a later call can
   adjust a single setting mid-session.
 - `@ar-js-org/artoolkit5-constants` as a direct dependency (`^0.3.0`). All ARToolKit5
@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through its own field (`idPatt` / `idMatrix`), and each is matched only against
   its own registry. This mirrors `artoolkit5-js`, which has kept the two separate
   all along. ([#36](https://github.com/AR-js-org/artoolkit5-ts/issues/36))
-- **Combined pattern+barcode detection.** `'color+matrix'` and `'mono+matrix'` detect
+- **Combined pattern+barcode detection.** `'color_and_matrix'` and `'mono_and_matrix'` detect
   both marker families in a single frame, verified against a real camera rather than a
   mock. This required a fix in the WASM binding, which exposed only a field the engine
   leaves unassigned in those modes
@@ -42,13 +42,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`configureDetector`'s option values now follow AR.js's naming.** These are the
+  names AR.js has used for the same ARToolKit5 constants since long before this
+  library existed, so a consumer moving across passes the strings they already know:
+
+  | was | now |
+  |---|---|
+  | `'color+matrix'` | `'color_and_matrix'` |
+  | `'mono+matrix'` | `'mono_and_matrix'` |
+  | `'black-region'` / `'white-region'` | `'black_region'` / `'white_region'` |
+  | `'auto-median'` / `'auto-otsu'` / `'auto-bracketing'` | `'auto_median'` / `'auto_otsu'` / `'auto_bracketing'` |
+  | `'3x3_hamming63'`, `'4x4_bch_13_9_3'`, … | `'3x3_HAMMING63'`, `'4x4_BCH_13_9_3'`, … |
+  | option `pattRatio` | option `patternRatio` |
+
+  `'matrix'` and `'global_id'` keep their names — AR.js exposes no equivalent for
+  either. `thresholdMode` and `imageProcMode` have no AR.js counterpart at all, so
+  their values simply follow the same snake_case convention for internal consistency.
+
+  This deliberately inherits one wart from AR.js: snake_case for mode names but
+  SCREAMING_SNAKE for matrix algorithm suffixes. Matching the ecosystem was judged
+  worth more than tidiness in isolation. ([#34](https://github.com/AR-js-org/artoolkit5-ts/issues/34))
+
 - Depends on `@ar-js-org/artoolkit5-wasm@^0.3.0`, up from `^0.1.3`. `0.3.0` is required,
   not merely preferred: it is the first release to bind `idPatt`/`idMatrix`, without
   which the combined detection modes silently report nothing or the wrong marker.
 
 ### Notes
 
-`thresholdMode: 'auto-adaptive'` is not offered: the WebARKitLib build this
+`thresholdMode: 'auto_adaptive'` is not offered: the WebARKitLib build this
 library ships compiles that mode's implementation out, and passing it would
 silently degrade to `'manual'`.
 
