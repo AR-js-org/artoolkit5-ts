@@ -130,7 +130,7 @@ Registers a marker for tracking and allocates its reusable pose buffers.
 
 Registers a barcode (matrix code) marker for tracking. Unlike a pattern marker, there is nothing to load first: the ID is encoded directly in the marker's geometry, so `barcodeId` is a value you choose when generating the marker, not one the engine assigns — pass it straight to this function.
 
-Detecting a barcode marker also requires `configureDetector` to have set a matrix-capable `detectionMode` (`'matrix'`, `'color+matrix'`, or `'mono+matrix'`) and a `matrixCodeType` matching the marker.
+Detecting a barcode marker also requires `configureDetector` to have set a matrix-capable `detectionMode` (`'matrix'`, `'color_and_matrix'`, or `'mono_and_matrix'`) and a `matrixCodeType` matching the marker.
 
 Pattern and barcode markers have **independent ID spaces**, and are kept in separate registries. Pattern IDs are assigned by the engine starting at 0; barcode IDs are encoded in the marker's own geometry and chosen by whoever printed it. So `7` in one family is unrelated to `7` in the other, and both can be tracked at once:
 
@@ -155,21 +155,21 @@ Tunes the underlying detector. Only the keys you pass are changed — call it ag
 
 ```typescript
 configureDetector(state, {
-  detectionMode: 'matrix',       // 'color' | 'mono' | 'matrix' | 'color+matrix' | 'mono+matrix'
-  matrixCodeType: '4x4_bch_13_9_3',
-  thresholdMode: 'auto-otsu',    // 'manual' | 'auto-median' | 'auto-otsu' | 'auto-bracketing'
+  detectionMode: 'matrix',       // 'color' | 'mono' | 'matrix' | 'color_and_matrix' | 'mono_and_matrix'
+  matrixCodeType: '4x4_BCH_13_9_3',
+  thresholdMode: 'auto_otsu',    // 'manual' | 'auto_median' | 'auto_otsu' | 'auto_bracketing'
   threshold: 100,                // 0–255, only meaningful when thresholdMode is 'manual'
-  labelingMode: 'black-region',  // 'white-region' | 'black-region' — the engine default
+  labelingMode: 'black_region',  // 'white_region' | 'black_region' — the engine default
   imageProcMode: 'frame',        // 'frame' | 'field'
-  pattRatio: 0.5,                // > 0 and < 1, exclusive
+  patternRatio: 0.5,                // > 0 and < 1, exclusive
   nearPlane: 1,
   farPlane: 1000,
 });
 ```
 
-An invalid string value or an out-of-range `threshold`/`pattRatio` throws `ARToolKitError` naming the option and, for string options, listing what it does accept — the engine itself would otherwise silently ignore the bad value and keep its previous setting, which is a much harder bug to notice.
+An invalid string value or an out-of-range `threshold`/`patternRatio` throws `ARToolKitError` naming the option and, for string options, listing what it does accept — the engine itself would otherwise silently ignore the bad value and keep its previous setting, which is a much harder bug to notice.
 
-`'auto-adaptive'` threshold mode is not offered: the WebARKitLib build this library ships compiles that mode's implementation out, so passing it would silently degrade to `'manual'` while claiming to work.
+`'auto_adaptive'` threshold mode is not offered: the WebARKitLib build this library ships compiles that mode's implementation out, so passing it would silently degrade to `'manual'` while claiming to work.
 
 ### `processFrame(state, videoFrame)`
 
@@ -256,7 +256,7 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## ⚠️ Limitations
 
-- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color+matrix'` and `'mono+matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.3.0`; this matters only if you override it.
+- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color_and_matrix'` and `'mono_and_matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.3.0`; this matters only if you override it.
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
 - **NFT markers are out of scope** for this project — see [Roadmap](#-roadmap).
 

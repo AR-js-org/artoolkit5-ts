@@ -42,7 +42,7 @@
  * geometry rather than assigned by the engine.
  *
  * Also registers the webcam example's Hiro pattern marker and exposes a
- * detection-mode switcher, so `'mono+matrix'`/`'color+matrix'` — detecting
+ * detection-mode switcher, so `'mono_and_matrix'`/`'color_and_matrix'` — detecting
  * both marker families at once — can be verified against the real engine.
  * See docs/DESIGN-detector-and-barcode.md §9 and issue #33: the mocked test
  * suite can prove `configureDetector` calls the right setter, but not that
@@ -97,8 +97,8 @@ const BARCODE_ID = 5;
 // `'matrix'` ignoring a pattern marker, and the combined modes finding both.
 const DETECTION_MODES: DetectionMode[] = [
     'matrix',
-    'mono+matrix',
-    'color+matrix',
+    'mono_and_matrix',
+    'color_and_matrix',
     'mono',
     'color',
 ];

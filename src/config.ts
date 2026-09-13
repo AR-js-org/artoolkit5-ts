@@ -69,35 +69,35 @@ import {
 } from '@ar-js-org/artoolkit5-constants';
 import { ARToolKitError } from './errors';
 
-export type DetectionMode = 'color' | 'mono' | 'matrix' | 'color+matrix' | 'mono+matrix';
+export type DetectionMode = 'color' | 'mono' | 'matrix' | 'color_and_matrix' | 'mono_and_matrix';
 
 export type MatrixCodeType =
     | '3x3'
-    | '3x3_parity65'
-    | '3x3_hamming63'
+    | '3x3_PARITY65'
+    | '3x3_HAMMING63'
     | '4x4'
-    | '4x4_bch_13_9_3'
-    | '4x4_bch_13_5_5'
+    | '4x4_BCH_13_9_3'
+    | '4x4_BCH_13_5_5'
     | '5x5'
-    | '5x5_bch_22_7_7'
-    | '5x5_bch_22_12_5'
+    | '5x5_BCH_22_7_7'
+    | '5x5_BCH_22_12_5'
     | '6x6'
     | 'global_id';
 
 /**
- * `'auto-adaptive'` is deliberately absent. `AR_LABELING_THRESH_MODE_AUTO_ADAPTIVE`
+ * `'auto_adaptive'` is deliberately absent. `AR_LABELING_THRESH_MODE_AUTO_ADAPTIVE`
  * is exported by the constants package, but `AR_DISABLE_THRESH_MODE_AUTO_ADAPTIVE`
  * is set in the WebARKitLib build this module compiles against, which compiles out
  * its `case` in `arCreateHandle.c`. Passing it silently falls through to `manual`.
  * Offering a mode that cannot work would be worse than not offering it; re-adding
  * it if the upstream build flag changes is a non-breaking addition.
  */
-export type ThresholdMode = 'manual' | 'auto-median' | 'auto-otsu' | 'auto-bracketing';
+export type ThresholdMode = 'manual' | 'auto_median' | 'auto_otsu' | 'auto_bracketing';
 
 export type ImageProcMode = 'frame' | 'field';
 
-/** `'black-region'` — black-bordered markers on a white background — is the engine default. */
-export type LabelingMode = 'white-region' | 'black-region';
+/** `'black_region'` — black-bordered markers on a white background — is the engine default. */
+export type LabelingMode = 'white_region' | 'black_region';
 
 export interface DetectorOptions {
     detectionMode?: DetectionMode;
@@ -108,7 +108,7 @@ export interface DetectorOptions {
     labelingMode?: LabelingMode;
     imageProcMode?: ImageProcMode;
     /** Proportion of the marker occupied by the pattern. Exclusive of 0 and 1. */
-    pattRatio?: number;
+    patternRatio?: number;
     nearPlane?: number;
     farPlane?: number;
 }
@@ -117,29 +117,29 @@ export const DETECTION_MODES: Record<DetectionMode, number> = {
     color: AR_TEMPLATE_MATCHING_COLOR,
     mono: AR_TEMPLATE_MATCHING_MONO,
     matrix: AR_MATRIX_CODE_DETECTION,
-    'color+matrix': AR_TEMPLATE_MATCHING_COLOR_AND_MATRIX,
-    'mono+matrix': AR_TEMPLATE_MATCHING_MONO_AND_MATRIX,
+    color_and_matrix: AR_TEMPLATE_MATCHING_COLOR_AND_MATRIX,
+    mono_and_matrix: AR_TEMPLATE_MATCHING_MONO_AND_MATRIX,
 };
 
 export const MATRIX_CODE_TYPES: Record<MatrixCodeType, number> = {
     '3x3': AR_MATRIX_CODE_3x3,
-    '3x3_parity65': AR_MATRIX_CODE_3x3_PARITY65,
-    '3x3_hamming63': AR_MATRIX_CODE_3x3_HAMMING63,
+    '3x3_PARITY65': AR_MATRIX_CODE_3x3_PARITY65,
+    '3x3_HAMMING63': AR_MATRIX_CODE_3x3_HAMMING63,
     '4x4': AR_MATRIX_CODE_4x4,
-    '4x4_bch_13_9_3': AR_MATRIX_CODE_4x4_BCH_13_9_3,
-    '4x4_bch_13_5_5': AR_MATRIX_CODE_4x4_BCH_13_5_5,
+    '4x4_BCH_13_9_3': AR_MATRIX_CODE_4x4_BCH_13_9_3,
+    '4x4_BCH_13_5_5': AR_MATRIX_CODE_4x4_BCH_13_5_5,
     '5x5': AR_MATRIX_CODE_5x5,
-    '5x5_bch_22_7_7': AR_MATRIX_CODE_5x5_BCH_22_7_7,
-    '5x5_bch_22_12_5': AR_MATRIX_CODE_5x5_BCH_22_12_5,
+    '5x5_BCH_22_7_7': AR_MATRIX_CODE_5x5_BCH_22_7_7,
+    '5x5_BCH_22_12_5': AR_MATRIX_CODE_5x5_BCH_22_12_5,
     '6x6': AR_MATRIX_CODE_6x6,
     global_id: AR_MATRIX_CODE_GLOBAL_ID,
 };
 
 export const THRESHOLD_MODES: Record<ThresholdMode, number> = {
     manual: AR_LABELING_THRESH_MODE_MANUAL,
-    'auto-median': AR_LABELING_THRESH_MODE_AUTO_MEDIAN,
-    'auto-otsu': AR_LABELING_THRESH_MODE_AUTO_OTSU,
-    'auto-bracketing': AR_LABELING_THRESH_MODE_AUTO_BRACKETING,
+    auto_median: AR_LABELING_THRESH_MODE_AUTO_MEDIAN,
+    auto_otsu: AR_LABELING_THRESH_MODE_AUTO_OTSU,
+    auto_bracketing: AR_LABELING_THRESH_MODE_AUTO_BRACKETING,
 };
 
 export const IMAGE_PROC_MODES: Record<ImageProcMode, number> = {
@@ -148,8 +148,8 @@ export const IMAGE_PROC_MODES: Record<ImageProcMode, number> = {
 };
 
 export const LABELING_MODES: Record<LabelingMode, number> = {
-    'white-region': AR_LABELING_WHITE_REGION,
-    'black-region': AR_LABELING_BLACK_REGION,
+    white_region: AR_LABELING_WHITE_REGION,
+    black_region: AR_LABELING_BLACK_REGION,
 };
 
 /**

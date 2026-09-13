@@ -60,13 +60,13 @@ describe('configureDetector', () => {
         const { state, calls } = createMockState();
 
         configureDetector(state, {
-            detectionMode: 'mono+matrix',
-            matrixCodeType: '4x4_bch_13_9_3',
+            detectionMode: 'mono_and_matrix',
+            matrixCodeType: '4x4_BCH_13_9_3',
             threshold: 120,
-            thresholdMode: 'auto-otsu',
-            labelingMode: 'white-region',
+            thresholdMode: 'auto_otsu',
+            labelingMode: 'white_region',
             imageProcMode: 'field',
-            pattRatio: 0.6,
+            patternRatio: 0.6,
             nearPlane: 1,
             farPlane: 1000,
         });
@@ -98,9 +98,9 @@ describe('configureDetector', () => {
         ['thresholdMode', 'not-a-mode'],
         ['labelingMode', 'not-a-region'],
         ['imageProcMode', 'not-a-proc-mode'],
-        // 'auto-adaptive' is a real constant name, deliberately not in the
+        // 'auto_adaptive' is a real constant name, deliberately not in the
         // union — this is the case the omission is meant to catch.
-        ['thresholdMode', 'auto-adaptive'],
+        ['thresholdMode', 'auto_adaptive'],
         // Every mapping table is a plain object literal, so an inherited key
         // — arriving from outside TypeScript's type safety, e.g. a plain-JS
         // caller — must not resolve through the prototype chain instead of
@@ -119,7 +119,7 @@ describe('configureDetector', () => {
         const { state } = createMockState();
 
         expect(() => configureDetector(state, { labelingMode: 'sideways' as never })).toThrow(
-            /'labelingMode'.*white-region.*black-region/s
+            /'labelingMode'.*white_region.*black_region/s
         );
     });
 
@@ -151,28 +151,28 @@ describe('configureDetector', () => {
         );
     });
 
-    describe('pattRatio', () => {
-        it.each([0.1, 0.5, 0.9])('accepts %f', (pattRatio) => {
+    describe('patternRatio', () => {
+        it.each([0.1, 0.5, 0.9])('accepts %f', (patternRatio) => {
             const { state, calls } = createMockState();
-            configureDetector(state, { pattRatio });
-            expect(calls.detector.setPattRatio).toBe(pattRatio);
+            configureDetector(state, { patternRatio });
+            expect(calls.detector.setPattRatio).toBe(patternRatio);
         });
 
         it.each([0, 1, -0.1, 1.1])(
             'rejects %f, which the engine would otherwise silently ignore',
-            (pattRatio) => {
+            (patternRatio) => {
                 const { state } = createMockState();
-                expect(() => configureDetector(state, { pattRatio })).toThrow(ARToolKitError);
+                expect(() => configureDetector(state, { patternRatio })).toThrow(ARToolKitError);
             }
         );
 
         it.each([NaN, Infinity, -Infinity])(
             'rejects %s, which passes a plain range comparison unnoticed',
-            (pattRatio) => {
+            (patternRatio) => {
                 // Every comparison against NaN is false, so `NaN <= 0 || NaN >= 1`
                 // evaluates to false — a naive range check lets it straight through.
                 const { state } = createMockState();
-                expect(() => configureDetector(state, { pattRatio })).toThrow(ARToolKitError);
+                expect(() => configureDetector(state, { patternRatio })).toThrow(ARToolKitError);
             }
         );
     });
@@ -203,7 +203,7 @@ describe('configureDetector', () => {
 
         it('does not recompute for options unrelated to the camera frustum', () => {
             const { state, calls } = createMockState();
-            configureDetector(state, { threshold: 100, labelingMode: 'white-region' });
+            configureDetector(state, { threshold: 100, labelingMode: 'white_region' });
             expect(calls.recalculateCameraLens).toBe(0);
         });
     });
@@ -227,22 +227,22 @@ describe('mapping tables match @ar-js-org/artoolkit5-constants', () => {
             color: constants.AR_TEMPLATE_MATCHING_COLOR,
             mono: constants.AR_TEMPLATE_MATCHING_MONO,
             matrix: constants.AR_MATRIX_CODE_DETECTION,
-            'color+matrix': constants.AR_TEMPLATE_MATCHING_COLOR_AND_MATRIX,
-            'mono+matrix': constants.AR_TEMPLATE_MATCHING_MONO_AND_MATRIX,
+            'color_and_matrix': constants.AR_TEMPLATE_MATCHING_COLOR_AND_MATRIX,
+            'mono_and_matrix': constants.AR_TEMPLATE_MATCHING_MONO_AND_MATRIX,
         });
     });
 
     it('MATRIX_CODE_TYPES', () => {
         expect(MATRIX_CODE_TYPES).toEqual({
             '3x3': constants.AR_MATRIX_CODE_3x3,
-            '3x3_parity65': constants.AR_MATRIX_CODE_3x3_PARITY65,
-            '3x3_hamming63': constants.AR_MATRIX_CODE_3x3_HAMMING63,
+            '3x3_PARITY65': constants.AR_MATRIX_CODE_3x3_PARITY65,
+            '3x3_HAMMING63': constants.AR_MATRIX_CODE_3x3_HAMMING63,
             '4x4': constants.AR_MATRIX_CODE_4x4,
-            '4x4_bch_13_9_3': constants.AR_MATRIX_CODE_4x4_BCH_13_9_3,
-            '4x4_bch_13_5_5': constants.AR_MATRIX_CODE_4x4_BCH_13_5_5,
+            '4x4_BCH_13_9_3': constants.AR_MATRIX_CODE_4x4_BCH_13_9_3,
+            '4x4_BCH_13_5_5': constants.AR_MATRIX_CODE_4x4_BCH_13_5_5,
             '5x5': constants.AR_MATRIX_CODE_5x5,
-            '5x5_bch_22_7_7': constants.AR_MATRIX_CODE_5x5_BCH_22_7_7,
-            '5x5_bch_22_12_5': constants.AR_MATRIX_CODE_5x5_BCH_22_12_5,
+            '5x5_BCH_22_7_7': constants.AR_MATRIX_CODE_5x5_BCH_22_7_7,
+            '5x5_BCH_22_12_5': constants.AR_MATRIX_CODE_5x5_BCH_22_12_5,
             '6x6': constants.AR_MATRIX_CODE_6x6,
             global_id: constants.AR_MATRIX_CODE_GLOBAL_ID,
         });
@@ -251,15 +251,15 @@ describe('mapping tables match @ar-js-org/artoolkit5-constants', () => {
     it('THRESHOLD_MODES', () => {
         expect(THRESHOLD_MODES).toEqual({
             manual: constants.AR_LABELING_THRESH_MODE_MANUAL,
-            'auto-median': constants.AR_LABELING_THRESH_MODE_AUTO_MEDIAN,
-            'auto-otsu': constants.AR_LABELING_THRESH_MODE_AUTO_OTSU,
-            'auto-bracketing': constants.AR_LABELING_THRESH_MODE_AUTO_BRACKETING,
+            'auto_median': constants.AR_LABELING_THRESH_MODE_AUTO_MEDIAN,
+            'auto_otsu': constants.AR_LABELING_THRESH_MODE_AUTO_OTSU,
+            'auto_bracketing': constants.AR_LABELING_THRESH_MODE_AUTO_BRACKETING,
         });
 
         // The upstream build compiles this mode's case out; offering it would
         // silently degrade to 'manual'. Asserting its absence turns a future
         // accidental re-add into a failing test rather than a silent lie.
-        expect(THRESHOLD_MODES).not.toHaveProperty('auto-adaptive');
+        expect(THRESHOLD_MODES).not.toHaveProperty('auto_adaptive');
     });
 
     it('IMAGE_PROC_MODES', () => {
@@ -271,8 +271,8 @@ describe('mapping tables match @ar-js-org/artoolkit5-constants', () => {
 
     it('LABELING_MODES', () => {
         expect(LABELING_MODES).toEqual({
-            'white-region': constants.AR_LABELING_WHITE_REGION,
-            'black-region': constants.AR_LABELING_BLACK_REGION,
+            'white_region': constants.AR_LABELING_WHITE_REGION,
+            'black_region': constants.AR_LABELING_BLACK_REGION,
         });
     });
 });

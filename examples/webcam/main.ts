@@ -76,7 +76,7 @@ const DEFAULT_THRESHOLD = 100;
 const DEFAULT_NEAR_PLANE = 0.0001;
 const DEFAULT_FAR_PLANE = 1000;
 
-const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto-median', 'auto-otsu', 'auto-bracketing'];
+const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto_median', 'auto_otsu', 'auto_bracketing'];
 
 async function main(): Promise<void> {
     const stage = getStage();

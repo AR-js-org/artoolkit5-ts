@@ -89,7 +89,7 @@ export function trackMarker(
  *
  * Detecting a barcode marker also requires `configureDetector` to have put
  * the engine into a matrix-capable `detectionMode` (`'matrix'`,
- * `'color+matrix'`, or `'mono+matrix'`); this function only registers the ID.
+ * `'color_and_matrix'`, or `'mono_and_matrix'`); this function only registers the ID.
  *
  * The two families have independent ID spaces, so a barcode may share an ID
  * with an already-registered pattern marker: the engine reports each through
