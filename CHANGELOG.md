@@ -42,9 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`configureDetector`'s option values now follow AR.js's naming.** These are the
-  names AR.js has used for the same ARToolKit5 constants since long before this
-  library existed, so a consumer moving across passes the strings they already know:
+- **`configureDetector`'s option values now use spellings also used by AR.js.** This is a
+  deliberate public-vocabulary choice; the `artoolkit5-js` peer exposes raw numeric modes
+  rather than these strings:
 
   | was | now |
   |---|---|
