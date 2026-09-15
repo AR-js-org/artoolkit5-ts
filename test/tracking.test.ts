@@ -33,6 +33,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { processFrame, trackBarcodeMarker, trackMarker } from '../src/tracking';
+import { configureDetector } from '../src/detector';
 import { ARToolKitError } from '../src/errors';
 import { createMockState } from './mock-core';
 
@@ -137,6 +138,125 @@ describe('independent ID spaces', () => {
         trackBarcodeMarker(state, MARKER_ID, 1.0);
         trackBarcodeMarker(state, MARKER_ID, 2.0);
         expect(state.barcodeMarkers[MARKER_ID].markerWidth).toBe(2.0);
+    });
+});
+
+describe('confidence', () => {
+    it('reports the confidence of the match that produced each pose', () => {
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            confidence: { pattern: 0.82, matrix: 1 },
+        });
+        trackMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+        expect(detected[0].confidence).toBe(0.82);
+    });
+
+    it('reads confidence from the family that matched, not the other', () => {
+        // The mock reports both families; each pose must carry its own score.
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            confidence: { pattern: 0.6, matrix: 1 },
+        });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+        const byType = Object.fromEntries(detected.map((m) => [m.type, m.confidence]));
+
+        expect(byType).toEqual({ pattern: 0.6, barcode: 1 });
+    });
+
+    it('does not filter anything by default', () => {
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            confidence: { pattern: 0.01, matrix: 0.01 },
+        });
+        trackMarker(state, MARKER_ID);
+
+        expect(processFrame(state, FRAME).detected).toHaveLength(1);
+    });
+
+    it('drops a match below minConfidence', () => {
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            confidence: { pattern: 0.55, matrix: 1 },
+        });
+        trackMarker(state, MARKER_ID);
+        configureDetector(state, { minConfidence: { pattern: 0.6 } });
+
+        expect(processFrame(state, FRAME).detected).toEqual([]);
+    });
+
+    it('keeps a match exactly at the threshold', () => {
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            confidence: { pattern: 0.6, matrix: 1 },
+        });
+        trackMarker(state, MARKER_ID);
+        configureDetector(state, { minConfidence: { pattern: 0.6 } });
+
+        expect(processFrame(state, FRAME).detected).toHaveLength(1);
+    });
+
+    it('applies each family threshold only to its own family', () => {
+        // The thresholds must differ, and each family's confidence must sit
+        // between them. Then applying the wrong threshold to either family
+        // flips that family's outcome:
+        //
+        //   pattern cf 0.95 >= its 0.90  -> kept   (0.95 >= barcode's 0.50 too,
+        //                                           so a swap keeps it wrongly)
+        //   barcode cf 0.60 >= its 0.50  -> kept   (0.60 <  pattern's 0.90,
+        //                                           so a swap drops it)
+        //
+        // Equal thresholds would make a swap undetectable, which is what an
+        // earlier version of this test got wrong.
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            confidence: { pattern: 0.95, matrix: 0.6 },
+        });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+        configureDetector(state, { minConfidence: { pattern: 0.9, barcode: 0.5 } });
+
+        const { detected } = processFrame(state, FRAME);
+        expect(detected.map((m) => m.type).sort()).toEqual(['barcode', 'pattern']);
+    });
+
+    it('rejects a family whose own threshold it fails, even if it would pass the other', () => {
+        // pattern cf 0.60 fails its own 0.90, but would pass barcode's 0.50.
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            confidence: { pattern: 0.6, matrix: 0.6 },
+        });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+        configureDetector(state, { minConfidence: { pattern: 0.9, barcode: 0.5 } });
+
+        const { detected } = processFrame(state, FRAME);
+        expect(detected.map((m) => m.type)).toEqual(['barcode']);
+    });
+
+    it('reports a marker lost when its confidence falls below the threshold', () => {
+        // Filtered out is indistinguishable from absent: the marker was
+        // visible, then drops under the threshold, and that is a loss.
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID], [MARKER_ID]],
+            confidence: { pattern: 1, matrix: 1 },
+        });
+        trackMarker(state, MARKER_ID);
+
+        expect(processFrame(state, FRAME).detected).toHaveLength(1);
+
+        configureDetector(state, { minConfidence: { pattern: 0.9 } });
+        state.core.getMarkerInfo = () => ({
+            id: -1, idPatt: MARKER_ID, idMatrix: -1, cfPatt: 0.2, cfMatrix: -1,
+        });
+
+        const { detected, lost } = processFrame(state, FRAME);
+        expect(detected).toEqual([]);
+        expect(lost).toEqual([{ id: MARKER_ID, type: 'pattern' }]);
     });
 });
 

@@ -63,6 +63,19 @@ export interface MarkerPose {
     id: number;
     type: MarkerType;
     /**
+     * How strongly the engine matched this marker, 0.0 to 1.0.
+     *
+     * Read from the field belonging to this marker's family — `cfPatt` for a
+     * pattern marker, `cfMatrix` for a barcode — so the two are directly
+     * comparable only within a family, not across them.
+     *
+     * A continuous quality score for both families, not a verdict: the same
+     * marker moves across a wide range with viewing angle, distance and focus.
+     * A high value is not proof of a genuine match, nor a low one proof of a
+     * false one — the ranges overlap. See `MinConfidence`.
+     */
+    confidence: number;
+    /**
      * 3x4 row-major pose, exactly as ARToolKit produces it.
      *
      * 64-bit because the C core computes in `ARdouble` and writes to
@@ -166,6 +179,10 @@ export interface MarkerInfo {
     idPatt: number;
     /** Barcode (matrix code) ID, or -1. Valid when the mode includes matrix detection. */
     idMatrix: number;
+    /** Template-match confidence, 0.0-1.0, or -1.0 when there was no match. */
+    cfPatt: number;
+    /** Matrix-code confidence, 0.0-1.0, or -1.0 when there was no match. */
+    cfMatrix: number;
 }
 
 /**
@@ -233,6 +250,16 @@ export interface ARToolKitState {
      * marker, and `5` in one is unrelated to `5` in the other.
      */
     barcodeMarkers: Record<number, TrackedMarkerState>;
+    /**
+     * Confidence below which a detection is discarded, per family.
+     *
+     * Enforced here rather than in the engine: ARToolKit's own cutoff
+     * (`AR_CONFIDENCE_CUTOFF_DEFAULT`, 0.5) is a compile-time constant with no
+     * setter, so this filters on top of it and can only ever be stricter.
+     * Both default to 0, meaning no filtering beyond the engine's own.
+     * Set through `configureDetector`.
+     */
+    minConfidence: { pattern: number; barcode: number };
     /**
      * Set by `disposeARToolKitState`. Once true the C++ instance is gone and
      * every operation on this state throws rather than reaching freed memory.

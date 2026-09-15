@@ -37,6 +37,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([artoolkit5-wasm#23](https://github.com/AR-js-org/artoolkit5-wasm/issues/23)); see
   `docs/DESIGN-detector-and-barcode.md` §9 for the full analysis. `examples/barcode/`
   gained a detection-mode switcher and a per-frame detection log demonstrating it.
+- **Match confidence, and a per-family `minConfidence` filter.** `MarkerPose` gains
+  `confidence` (0–1, read from the matching family's own `cfPatt`/`cfMatrix`), and
+  `configureDetector` gains `minConfidence: { pattern?, barcode? }`.
+
+  Unlike every other detector option this one never reaches the engine: ARToolKit's
+  confidence cutoff is a compile-time constant with no setter, so the threshold is
+  applied by `processFrame` and can only ever be stricter than the built-in 0.5.
+
+  The families take separate thresholds because their confidences are not comparable,
+  and **both default to `0`** — nothing is filtered unless you ask for it. Measured on a
+  real camera, the genuine and false ranges overlap for both families: a genuine pattern
+  match scored `0.506` against a false one at `0.554`, and a genuine barcode scored
+  `0.500` at an awkward angle while a phantom barcode reached `0.867`. The same barcode
+  marker ranged `0.500`–`0.967` across viewing angles. Confidence is a continuous quality
+  score for both families rather than a verdict, so no threshold avoids both missed
+  markers and admitted phantoms; the README documents the measurements and the trade-off.
+  ([#38](https://github.com/AR-js-org/artoolkit5-ts/issues/38))
 - `examples/barcode/`, tracking a 3x3 matrix code marker. `examples/index.html`
   now links to both examples.
 

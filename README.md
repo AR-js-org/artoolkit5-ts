@@ -161,15 +161,41 @@ configureDetector(state, {
   threshold: 100,                // 0–255, only meaningful when thresholdMode is 'manual'
   labelingMode: 'black_region',  // 'white_region' | 'black_region' — the engine default
   imageProcMode: 'frame',        // 'frame' | 'field'
-  patternRatio: 0.5,                // > 0 and < 1, exclusive
+  patternRatio: 0.5,             // > 0 and < 1, exclusive
   nearPlane: 1,
   farPlane: 1000,
+  minConfidence: { pattern: 0, barcode: 0 },   // 0–1 per family; see below
+                                               // before choosing a value
 });
 ```
 
 An invalid string value or an out-of-range `threshold`/`patternRatio` throws `ARToolKitError` naming the option and, for string options, listing what it does accept — the engine itself would otherwise silently ignore the bad value and keep its previous setting, which is a much harder bug to notice.
 
 `'auto_adaptive'` threshold mode is not offered: the WebARKitLib build this library ships compiles that mode's implementation out, so passing it would silently degrade to `'manual'` while claiming to work.
+
+#### `minConfidence` — rejecting weak matches
+
+Every other option here is handed to the engine. `minConfidence` is the exception: ARToolKit's own confidence cutoff is a compile-time constant with no setter, so this threshold is applied by `processFrame` instead. It can only ever be *stricter* than the engine's built-in 0.5.
+
+The two families take separate thresholds because their confidences are not comparable.
+
+**There is no safe default value, and this library does not ship one.** Measured on a real camera with a Hiro pattern marker and 3x3 matrix markers:
+
+| | genuine match | false match |
+|---|---|---|
+| **pattern** (template matching) | 0.506 – 0.923 | 0.526 – 0.554 *(read off a barcode square)* |
+| **barcode** (matrix code) | 0.500 – 1.000 | 0.633 – 0.867 *(read off a pattern square)* |
+
+Both ranges **overlap**, in both directions. A genuine pattern match scored `0.506`, below a false one at `0.554`. A genuine barcode scored `0.500` at an awkward angle while a phantom barcode — the engine decoding a Hiro marker's interior as a 3x3 grid — reached `0.867`. The same barcode marker, in the same detection mode minutes apart, ranged from `0.500` to `0.967` purely on viewing angle and focus.
+
+So confidence is a continuous quality score, not a verdict, for **both** families. Matrix codes are *not* digital in this respect: a clean decode does not imply `1.0`.
+
+What that means in practice:
+
+- Both thresholds default to `0` — nothing is filtered beyond the engine's own 0.5 cutoff.
+- Any threshold you set trades missed real markers against admitted phantoms. There is no value that avoids both.
+- Measure **your** markers, in **your** lighting, at the angles you expect. Log `marker.confidence` for a while before choosing a number.
+- A threshold is most defensible when you control the conditions — fixed mounting, known print quality, consistent lighting — and least defensible in an uncontrolled environment.
 
 ### `processFrame(state, videoFrame)`
 
@@ -226,10 +252,13 @@ Both take an optional output buffer — supply one in hot paths to avoid allocat
 interface MarkerPose {
   id: number;
   type: 'pattern' | 'barcode';
+  confidence: number;      // 0–1, from this marker's own family
   matrix: Float64Array;    // 3x4, row-major, as ARToolKit produces it
   matrixGL: Float32Array;  // 4x4, column-major, right-handed, WebGL-ready
 }
 ```
+
+`confidence` is read from the field belonging to the marker's family — `cfPatt` or `cfMatrix` — so it is comparable within a family but not across them. See [`minConfidence`](#minconfidence--rejecting-weak-matches) for measured ranges.
 
 `type` says which family a detection came from. The engine reports the two through separate fields — `idPatt` for pattern markers, `idMatrix` for barcode markers — and each is matched only against its own registry, so `type` follows from which registry answered rather than from any value the engine supplies. This is also why the families have independent ID spaces: the same integer in each is two unrelated markers.
 

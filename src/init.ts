@@ -75,6 +75,7 @@ export async function createARToolKitState(
         height,
         patternMarkers: {},
         barcodeMarkers: {},
+        minConfidence: { pattern: 0, barcode: 0 },
         disposed: false,
     };
 }
