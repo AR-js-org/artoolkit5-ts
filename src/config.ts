@@ -99,6 +99,28 @@ export type ImageProcMode = 'frame' | 'field';
 /** `'black_region'` — black-bordered markers on a white background — is the engine default. */
 export type LabelingMode = 'white_region' | 'black_region';
 
+/**
+ * Minimum match confidence per marker family, 0.0 to 1.0.
+ *
+ * The two families are not comparable, so they take separate thresholds.
+ *
+ * Confidence is a continuous quality score for *both* families, not a verdict:
+ * it moves with viewing angle, distance and focus. Measured on real hardware,
+ * the genuine and spurious ranges overlap in both directions — a genuine
+ * barcode read 0.500 at an awkward angle while a misread of a pattern marker
+ * reached 0.867. So no threshold avoids both missed markers and admitted
+ * phantoms; see the README for the measurements and the trade-off.
+ *
+ * Omitted keys are left unchanged. Both default to 0, which filters nothing
+ * beyond the engine's own cutoff of 0.5.
+ */
+export interface MinConfidence {
+    /** Applies to pattern markers, compared against `cfPatt`. */
+    pattern?: number;
+    /** Applies to barcode markers, compared against `cfMatrix`. */
+    barcode?: number;
+}
+
 export interface DetectorOptions {
     detectionMode?: DetectionMode;
     matrixCodeType?: MatrixCodeType;
@@ -111,6 +133,12 @@ export interface DetectorOptions {
     patternRatio?: number;
     nearPlane?: number;
     farPlane?: number;
+    /**
+     * Rejects weak matches, per family. Unlike every other option here this
+     * is applied by this library rather than passed to the engine — ARToolKit
+     * has no setter for it.
+     */
+    minConfidence?: MinConfidence;
 }
 
 export const DETECTION_MODES: Record<DetectionMode, number> = {

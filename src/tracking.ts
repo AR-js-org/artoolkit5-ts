@@ -182,12 +182,14 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
         // combined modes. Both are checked because one square can match a
         // pattern and a barcode in the same frame.
         const pattern = matchFamily(
-            state.patternMarkers, state, candidate, info.idPatt, 'pattern'
+            state.patternMarkers, state, candidate,
+            info.idPatt, info.cfPatt, 'pattern', state.minConfidence.pattern
         );
         if (pattern) detected.push(pattern);
 
         const barcode = matchFamily(
-            state.barcodeMarkers, state, candidate, info.idMatrix, 'barcode'
+            state.barcodeMarkers, state, candidate,
+            info.idMatrix, info.cfMatrix, 'barcode', state.minConfidence.barcode
         );
         if (barcode) detected.push(barcode);
     }
@@ -207,12 +209,19 @@ function matchFamily(
     state: ARToolKitState,
     candidate: number,
     id: number,
-    type: MarkerType
+    confidence: number,
+    type: MarkerType,
+    minConfidence: number
 ): MarkerPose | undefined {
     if (id === UNRECOGNISED_MARKER_ID) return undefined;
 
     const tracked = registry[id];
     if (!tracked) return undefined;
+
+    // Rejected before `inCurrent` is set, so a marker filtered out here is
+    // indistinguishable from one the engine never matched: it counts as absent
+    // and will be reported lost on the frame it drops below the threshold.
+    if (confidence < minConfidence) return undefined;
 
     tracked.inCurrent = true;
     updatePose(state, candidate, tracked);
@@ -220,6 +229,7 @@ function matchFamily(
     return {
         id: tracked.id,
         type,
+        confidence,
         matrix: tracked.matrix,
         matrixGL: tracked.matrixGL,
     };

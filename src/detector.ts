@@ -44,10 +44,15 @@ import { ARToolKitState } from './domain';
 import { ARToolKitError, assertNotDisposed } from './errors';
 
 /**
- * Applies detector tuning to the underlying ARToolKit5 engine.
+ * Applies detector tuning.
  *
  * Only the keys present in `opts` are applied — a partial call mid-session
  * changes just those settings and leaves everything else as it was.
+ *
+ * Every option but one is handed to the ARToolKit5 engine. `minConfidence`
+ * is the exception: the engine's confidence cutoff is a compile-time
+ * constant with no setter, so that threshold is recorded on `state` and
+ * applied by `processFrame` instead.
  *
  * Setting `nearPlane` or `farPlane` also recomputes the projection matrix
  * `getCameraProjectionMatrix` returns, so a change is visible on the very
@@ -88,6 +93,16 @@ export function configureDetector(state: ARToolKitState, opts: DetectorOptions):
 
     if (opts.patternRatio !== undefined) {
         state.core.setPattRatio(validatePatternRatio(opts.patternRatio));
+    }
+
+    if (opts.minConfidence !== undefined) {
+        const { pattern, barcode } = opts.minConfidence;
+        if (pattern !== undefined) {
+            state.minConfidence.pattern = validateConfidence(pattern, 'minConfidence.pattern');
+        }
+        if (barcode !== undefined) {
+            state.minConfidence.barcode = validateConfidence(barcode, 'minConfidence.barcode');
+        }
     }
 
     if (opts.nearPlane !== undefined) {
@@ -139,6 +154,21 @@ function validateThreshold(threshold: number): number {
  * `threshold`, a fraction is exactly what this option expects, so this stays
  * a finiteness check rather than an integer one.
  */
+/**
+ * A threshold outside 0..1 is always a mistake rather than a strict filter:
+ * above 1 rejects every marker including perfect matrix decodes, and below 0
+ * is meaningless since the engine never reports a negative confidence for a
+ * match. Rejecting it here beats silently tracking nothing.
+ */
+function validateConfidence(value: number, optionName: string): number {
+    if (!Number.isFinite(value) || value < 0 || value > 1) {
+        throw new ARToolKitError(
+            `Invalid value ${value} for '${optionName}'. Must be a finite number between 0 and 1 inclusive.`
+        );
+    }
+    return value;
+}
+
 function validatePatternRatio(patternRatio: number): number {
     if (!Number.isFinite(patternRatio) || patternRatio <= 0 || patternRatio >= 1) {
         throw new ARToolKitError(

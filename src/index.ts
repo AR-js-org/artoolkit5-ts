@@ -46,6 +46,7 @@ export type {
 export type {
     DetectionMode,
     DetectorOptions,
+    MinConfidence,
     ImageProcMode,
     LabelingMode,
     MatrixCodeType,

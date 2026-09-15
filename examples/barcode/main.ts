@@ -338,7 +338,12 @@ function createControlPanel(state: ARToolKitState): { updateLog: (detected: Mark
 
 function formatDetected(detected: MarkerPose[]): string {
     if (detected.length === 0) return 'detected: none';
-    return 'detected: ' + detected.map((marker) => `id ${marker.id} (${marker.type})`).join(', ');
+    return (
+        'detected: ' +
+        detected
+            .map((marker) => `id ${marker.id} (${marker.type}, cf ${marker.confidence.toFixed(2)})`)
+            .join(', ')
+    );
 }
 
 function overlay(element: HTMLElement, zIndex: number): void {

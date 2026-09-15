@@ -73,6 +73,12 @@ export interface MockCoreOptions {
     visibleIds?: number[][];
     /** Pose values the heap yields, so tests can assert what was copied out. */
     pose?: number[];
+    /**
+     * Match confidence the detector reports, per family. Defaults to 1 for
+     * both — a perfect match, so confidence filtering is inert unless a test
+     * opts into it.
+     */
+    confidence?: { pattern?: number; matrix?: number };
 }
 
 /**
@@ -91,6 +97,8 @@ export function createMockState(options: MockCoreOptions = {}): {
 } {
     const visibleIds = options.visibleIds ?? [[]];
     const pose = options.pose ?? Array.from({ length: POSE_ELEMENT_COUNT }, (_, i) => i + 1);
+    const cfPatt = options.confidence?.pattern ?? 1;
+    const cfMatrix = options.confidence?.matrix ?? 1;
 
     const calls: CoreCalls = {
         teardown: 0,
@@ -140,7 +148,7 @@ export function createMockState(options: MockCoreOptions = {}): {
             // rather than passing because the mock happened to populate it.
             getMarkerInfo: (index: number) => {
                 const id = currentIds()[index];
-                return { id: -1, idPatt: id, idMatrix: id };
+                return { id: -1, idPatt: id, idMatrix: id, cfPatt, cfMatrix };
             },
             getTransMatSquare: (index: number) => {
                 calls.transMat.push(index);
@@ -192,6 +200,7 @@ export function createMockState(options: MockCoreOptions = {}): {
         height: 480,
         patternMarkers: {},
         barcodeMarkers: {},
+        minConfidence: { pattern: 0, barcode: 0 },
         disposed: false,
     };
 
