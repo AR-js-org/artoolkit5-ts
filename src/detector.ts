@@ -154,6 +154,15 @@ function validateThreshold(threshold: number): number {
  * `threshold`, a fraction is exactly what this option expects, so this stays
  * a finiteness check rather than an integer one.
  */
+function validatePatternRatio(patternRatio: number): number {
+    if (!Number.isFinite(patternRatio) || patternRatio <= 0 || patternRatio >= 1) {
+        throw new ARToolKitError(
+            `Invalid value ${patternRatio} for 'patternRatio'. Must be a finite number greater than 0 and less than 1.`
+        );
+    }
+    return patternRatio;
+}
+
 /**
  * A threshold outside 0..1 is always a mistake rather than a strict filter:
  * above 1 rejects every marker including perfect matrix decodes, and below 0
@@ -167,13 +176,4 @@ function validateConfidence(value: number, optionName: string): number {
         );
     }
     return value;
-}
-
-function validatePatternRatio(patternRatio: number): number {
-    if (!Number.isFinite(patternRatio) || patternRatio <= 0 || patternRatio >= 1) {
-        throw new ARToolKitError(
-            `Invalid value ${patternRatio} for 'patternRatio'. Must be a finite number greater than 0 and less than 1.`
-        );
-    }
-    return patternRatio;
 }

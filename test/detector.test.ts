@@ -177,6 +177,69 @@ describe('configureDetector', () => {
         );
     });
 
+    describe('minConfidence', () => {
+        it.each([0, 0.5, 1])('accepts %f for both families', (value) => {
+            const { state } = createMockState();
+            configureDetector(state, { minConfidence: { pattern: value, barcode: value } });
+            expect(state.minConfidence).toEqual({ pattern: value, barcode: value });
+        });
+
+        it.each([-0.1, 1.1, NaN, Infinity, -Infinity])('rejects %s', (value) => {
+            // Above 1 rejects every marker including a perfect decode; below 0
+            // is meaningless. NaN and Infinity slip past a plain range check,
+            // since every comparison against NaN is false.
+            const { state } = createMockState();
+            expect(() =>
+                configureDetector(state, { minConfidence: { pattern: value } })
+            ).toThrow(ARToolKitError);
+        });
+
+        it('names the offending family in the error', () => {
+            const { state } = createMockState();
+            expect(() =>
+                configureDetector(state, { minConfidence: { barcode: 2 } })
+            ).toThrow(/minConfidence\.barcode/);
+        });
+
+        it('updates state only, never reaching the engine', () => {
+            // The one option here that ARToolKit has no setter for. If it ever
+            // starts calling into the core, that is a bug rather than a feature.
+            const { state, calls } = createMockState();
+            configureDetector(state, { minConfidence: { pattern: 0.7, barcode: 0.8 } });
+
+            expect(state.minConfidence).toEqual({ pattern: 0.7, barcode: 0.8 });
+            expect(calls.detector).toEqual({});
+        });
+
+        it('leaves the other family untouched when only one is given', () => {
+            const { state } = createMockState();
+            configureDetector(state, { minConfidence: { pattern: 0.7, barcode: 0.8 } });
+            configureDetector(state, { minConfidence: { barcode: 0.4 } });
+
+            expect(state.minConfidence).toEqual({ pattern: 0.7, barcode: 0.4 });
+        });
+
+        it('applies the earlier key before a later one fails validation', () => {
+            const { state } = createMockState();
+            configureDetector(state, { minConfidence: { pattern: 0.7 } });
+
+            expect(() =>
+                configureDetector(state, { minConfidence: { pattern: 0.2, barcode: 5 } })
+            ).toThrow(ARToolKitError);
+
+            // configureDetector applies each key as it goes rather than
+            // validating the whole object first, so a later failure leaves
+            // earlier keys applied. True of every option, not just this one.
+            // Documented rather than asserted as a rollback it does not do.
+            expect(state.minConfidence).toEqual({ pattern: 0.2, barcode: 0 });
+        });
+
+        it('defaults both families to 0, filtering nothing', () => {
+            const { state } = createMockState();
+            expect(state.minConfidence).toEqual({ pattern: 0, barcode: 0 });
+        });
+    });
+
     describe('projection matrix refresh', () => {
         // setProjectionNearPlane/FarPlane only assign a field; recalculateCameraLens
         // is what rebuilds the matrix getCameraProjectionMatrix returns. Forgetting

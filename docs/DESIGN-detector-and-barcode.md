@@ -23,6 +23,13 @@
 
 Everything in this section was executed or read from source, not inferred.
 
+> **As of 2026-08-30.** This section records what was true when the design was
+> written. Two of its findings have since been overtaken by
+> `@ar-js-org/artoolkit5-wasm@0.3.0` — the per-mode marker fields and the
+> confidence fields are now bound and consumed. Where this section and §9
+> Resolution disagree, §9 is current. Kept unedited because the decisions below
+> only make sense against what was known at the time.
+
 ### Engine surface
 
 All detector methods are present in the shipped `artoolkit5.wasm` (`@ar-js-org/artoolkit5-wasm@0.2.0`), confirmed by symbol search:
@@ -43,6 +50,11 @@ id, dir, cf, area, errorCorrected, pos, line, vertex
 ```
 
 `idPatt`, `idMatrix`, `dirPatt`, `dirMatrix`, `cfPatt`, `cfMatrix` are **not** exposed — confirmed absent from both the C++ source and the binary.
+
+> **Superseded.** All six are bound as of `artoolkit5-wasm@0.3.0`
+> ([artoolkit5-wasm#23](https://github.com/AR-js-org/artoolkit5-wasm/issues/23)).
+> The library reads `idPatt`/`idMatrix` for detection and `cfPatt`/`cfMatrix` for
+> `MarkerPose.confidence`. See §9 Resolution.
 
 **Consequence.** In single-mode matrix detection ARToolKit writes the barcode ID into `id`, so the existing detection loop works unchanged. In the **combined** modes `id` holds whichever family won on confidence, with no way to tell which. This is the real risk in #9, and it is not the one the issue records.
 
@@ -227,7 +239,7 @@ Most items below were open when this design was first written and are now done, 
 - ~~**`docs/issues/*.md`**~~ — done. Each draft carries a header mapping it to its filed issue number.
 - ~~**`@ar-js-org/artoolkit5-wasm` bumped to `^0.2.0`**~~ — done (this repo), reaching `constants@0.3.0` and unblocking `labelingMode` — see Decision 9.
 - **Combined-mode verification** — design below, §9. Implementation tracked in [#33](https://github.com/AR-js-org/artoolkit5-ts/issues/33).
-- **Upstream (optional, still open)** — bind `idPatt`/`idMatrix`/`cfPatt`/`cfMatrix` in `artoolkit5-wasm` so pattern-vs-barcode could be read from the engine rather than derived. Not needed given Decision 3.
+- ~~**Upstream (optional, still open)** — bind `idPatt`/`idMatrix`/`cfPatt`/`cfMatrix` in `artoolkit5-wasm` so pattern-vs-barcode could be read from the engine rather than derived. Not needed given Decision 3.~~ — **done, and it turned out to be required rather than optional**: the combined modes cannot work without it. Shipped in `artoolkit5-wasm@0.3.0`; see §9 Resolution.
 
 ---
 
@@ -296,6 +308,8 @@ Consequences for this design:
 - **R1 is realised.** `'color_and_matrix'` and `'mono_and_matrix'` stay in the `DetectionMode` union but must not be documented as supported until the binding is fixed. Nothing has shipped, so no consumer is affected yet.
 - **The #33 branch is held, not merged.** Merging would publish two modes that silently return nothing.
 - **A second gap surfaced.** Confidence is not exposed at all, so consumers cannot filter above the engine's built-in `AR_CONFIDENCE_CUTOFF_DEFAULT` of `0.5` (`arConfig.h:120`). AR.js defaults its own `minConfidence` to `0.6`. This matters most in combined mode, where template matching runs against every square including barcode ones. Needs the same binding change.
+
+  > **Resolved**, and the reasoning changed on contact with hardware. `cfPatt`/`cfMatrix` are bound and surfaced as `MarkerPose.confidence`, with an opt-in per-family `minConfidence` ([#38](https://github.com/AR-js-org/artoolkit5-ts/issues/38)). AR.js's `0.6` was **not** adopted: measured genuine and false ranges overlap for both families, so no threshold separates them and both default to `0`. See the README.
 - **`globalID` is unreachable too.** `matrixCodeType: 'global_id'` is selectable but its 64-bit result is not bound, so that code type cannot currently be used.
 
-Blocked on `artoolkit5-wasm` binding `idPatt`/`idMatrix`/`dirPatt`/`dirMatrix`/`cfPatt`/`cfMatrix` (and ideally `globalID`), plus a WASM rebuild.
+~~Blocked on `artoolkit5-wasm` binding `idPatt`/`idMatrix`/`dirPatt`/`dirMatrix`/`cfPatt`/`cfMatrix` (and ideally `globalID`), plus a WASM rebuild.~~ — **unblocked.** All six shipped in `artoolkit5-wasm@0.3.0`. `globalID` remains unbound, so `matrixCodeType: 'global_id'` is still unusable ([artoolkit5-wasm#29](https://github.com/AR-js-org/artoolkit5-wasm/issues/29)).
