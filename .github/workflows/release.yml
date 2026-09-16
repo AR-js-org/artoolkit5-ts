@@ -51,7 +51,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Pinned to the dispatched commit rather than the branch tip so the
           # release job tags and publishes exactly what was tested here, even if
@@ -68,7 +68,7 @@ jobs:
           exit 1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22.x'
           cache: 'npm'
@@ -179,7 +179,7 @@ jobs:
       # published is the one `npm pack --dry-run` just reported on, not a second
       # build that happens to be made from the same sources.
       - name: Stage the release for the publishing job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ steps.validate.outputs.version }}
           path: |
@@ -229,14 +229,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The same pin as `prepare`, for the same reason.
           ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22.x'
           registry-url: 'https://registry.npmjs.org'
@@ -245,8 +245,12 @@ jobs:
       # not the dependency tree, and there are no publish lifecycle scripts to
       # run. Reinstalling would only add a chance for the published tree to
       # differ from the verified one.
+      # v8 against upload-artifact's v7 is the matching pair, not a typo: the
+      # download side has been one major ahead since its v5, which changed
+      # path handling for downloads by *id*. This downloads by name, which that
+      # release explicitly left alone.
       - name: Restore the prepared release
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-${{ needs.prepare.outputs.version }}
           path: .prepared

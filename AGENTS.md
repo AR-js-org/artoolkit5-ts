@@ -176,9 +176,19 @@ export { loadNFTMarker, processNFTFrame } from './nft';
 - **Commit messages**: Follow [Conventional Commits](https://www.conventionalcommits.org/) format:
   - `feat:` for new features
   - `fix:` for bug fixes
-  - `docs:` for documentation changes
+  - `perf:` for performance work
   - `refactor:` for code refactoring
+  - `docs:` for documentation changes
   - `test:` for test additions or updates
-  - `chore:` for build/tooling changes
+  - `ci:` for workflow and CI changes
+  - `build:` for the build system and dependencies
+  - `chore:` for anything else
   - Example: `feat: add marker group tracking support`
   - For breaking changes, append `!` before the colon: `feat!: redesign marker API`
+
+  These nine are not arbitrary: `scripts/release-notes.mjs` groups commits into
+  the generated release notes by exactly this set, in this order. Keep the two in
+  step — a type outside the list reaches no section, and the script's `Other`
+  bucket does not catch it either, since that only collects subjects which fail
+  to parse as Conventional Commits at all. Such a commit is dropped from the
+  notes entirely, unless it is marked breaking with `!`.
