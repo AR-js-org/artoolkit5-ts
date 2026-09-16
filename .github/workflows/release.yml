@@ -84,8 +84,15 @@ jobs:
         run: |
           VERSION="$INPUT_VERSION"
 
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::'$VERSION' is not a valid semver version. Give it without a leading v, e.g. 0.1.0."
+          # Matched with bash's own `=~` rather than piped through grep. grep is
+          # line-oriented, so `0.2.0\nFOO=pwned` matches on its first line and
+          # passes — and `echo "VERSION=$VERSION" >> "$GITHUB_ENV"` below would
+          # then write FOO=pwned as a second environment record for every later
+          # step. `[[ =~ ]]` anchors ^ and $ to the whole string, newline and
+          # all, so a multi-line value is rejected outright.
+          SEMVER='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if ! [[ "$VERSION" =~ $SEMVER ]]; then
+            echo "::error::'$INPUT_VERSION' is not a valid semver version. Give it without a leading v, e.g. 0.1.0."
             exit 1
           fi
 
@@ -163,47 +170,6 @@ jobs:
           node scripts/release-notes.mjs > release-notes.md
           echo "--- release notes ---"
           cat release-notes.md
-
-      # Branch protection on main would reject the release commit pushed by the
-      # GITHUB_TOKEN actor, stopping the release after everything has been built
-      # but before the tag is pushed. Nothing is published, so it is
-      # recoverable, but the raw git rejection says nothing about how to fix it.
-      #
-      # This has to run *here*, not earlier: whether a branch push is needed at
-      # all is only knowable once the bump and the promotion have happened. If
-      # both were already done in the pull request that merged into main there
-      # is nothing left to commit, the release job pushes only a tag, and branch
-      # protection never comes into it. Checking up front would fail a release
-      # that was going to succeed.
-      - name: Ensure the release commit can be pushed
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if git diff --quiet -- package.json package-lock.json CHANGELOG.md; then
-            echo "Nothing to commit: the release job will push only the tag, which branch protection does not govern."
-            exit 0
-          fi
-
-          # 404 means unprotected, which is the state this workflow was written
-          # for. Any other failure is treated as "cannot tell" and allowed
-          # through, rather than blocking a release on a flaky API call. The
-          # filter runs through gh's own embedded jq, so nothing extra has to be
-          # installed on the runner.
-          if ! BLOCKS_PUSH="$(gh api \
-            "repos/${{ github.repository }}/branches/${GITHUB_REF_NAME}/protection" \
-            --jq '(.restrictions != null) or (.required_pull_request_reviews != null) or ((.lock_branch.enabled // false) == true)' \
-            2>/dev/null)"; then
-            echo "${GITHUB_REF_NAME} is not protected, or protection is not readable with this token. Proceeding."
-            exit 0
-          fi
-
-          if [ "$BLOCKS_PUSH" = "true" ]; then
-            echo "::error::${GITHUB_REF_NAME} is protected against direct pushes, so the release commit cannot land. Two ways out: exempt github-actions[bot] from the restriction, or set the version and promote the changelog in the pull request that merges into ${GITHUB_REF_NAME}, which leaves this workflow nothing to commit and only a tag to push."
-            exit 1
-          fi
-
-          echo "${GITHUB_REF_NAME} is protected, but not against direct pushes. Proceeding."
 
       - name: Show what would be published
         run: npm pack --dry-run
@@ -310,11 +276,12 @@ jobs:
 
           git add package.json package-lock.json CHANGELOG.md
 
-          # With the version already set by hand and the changelog promoted in
-          # an earlier commit, there may be nothing left to record. `git commit`
-          # treats that as an error, so tag what is already there instead — and
-          # skip the branch push too, since there is nothing to push and main
-          # may well be protected against one.
+          # Defensive only. `git commit` errors when there is nothing staged, so
+          # this tags what is already there instead. In practice it does not
+          # trigger: promote-changelog.mjs always rewrites CHANGELOG.md, and it
+          # refuses to run at all if the version was promoted by hand first
+          # ("already has a ## [X.Y.Z] section"). A successful release therefore
+          # always has a commit to make, and always needs the branch push below.
           if git diff --staged --quiet; then
             echo "No release changes to commit; tagging the current commit."
             PUSH_BRANCH=false
@@ -325,10 +292,19 @@ jobs:
 
           git tag -a "v$VERSION" -m "Release $VERSION"
 
-          # The branch first: if it is rejected the tag never leaves the runner,
-          # nothing is published, and the run can simply be retried.
-          if [ "$PUSH_BRANCH" = true ]; then
-            git push origin HEAD:"${GITHUB_REF_NAME}"
+          # Branch before tag, deliberately: if the push is rejected the tag
+          # never leaves the runner, no Release is created and nothing is
+          # published, so the run can simply be retried once the cause is fixed.
+          #
+          # Branch protection on ${GITHUB_REF_NAME} is the rejection worth
+          # naming. It cannot be detected in advance: reading branch protection
+          # needs admin rights, and `permissions:` has no scope that grants the
+          # workflow token any. A preflight would have reported "not protected"
+          # precisely when protection existed, so the check is here, where the
+          # answer is authoritative.
+          if [ "$PUSH_BRANCH" = true ] && ! git push origin HEAD:"${GITHUB_REF_NAME}"; then
+            echo "::error::Pushing the release commit to ${GITHUB_REF_NAME} was rejected. Nothing was tagged or published, so this run can be retried. If ${GITHUB_REF_NAME} is protected against direct pushes, the two ways forward are to exempt github-actions[bot] from the restriction, or to change this workflow to open a pull request with the version commit and tag once it merges. Note that preparing the release by hand beforehand is not a third option: promote-changelog.mjs refuses to run against an already-promoted version."
+            exit 1
           fi
           git push origin "v$VERSION"
 
