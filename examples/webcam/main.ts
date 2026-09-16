@@ -62,7 +62,6 @@ import {
 
 // Vite resolves this to a hashed asset URL at build time; the WASM loader
 // cannot discover it on its own.
-//@ts-expect-error -- no ambient module declaration for `*?url` imports in this project
 import wasmUrl from '/node_modules/@ar-js-org/artoolkit5-wasm/dist/artoolkit5.wasm?url';
 
 const FRAME_WIDTH = 640;
