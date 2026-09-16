@@ -307,8 +307,14 @@ describe('mapping tables match @ar-js-org/artoolkit5-constants', () => {
             '5x5_BCH_22_7_7': constants.AR_MATRIX_CODE_5x5_BCH_22_7_7,
             '5x5_BCH_22_12_5': constants.AR_MATRIX_CODE_5x5_BCH_22_12_5,
             '6x6': constants.AR_MATRIX_CODE_6x6,
-            global_id: constants.AR_MATRIX_CODE_GLOBAL_ID,
         });
+
+        // Selectable but unreadable: the engine decodes a 64-bit globalID that
+        // is not bound, and meanwhile reports every global ID at or above 32768
+        // through `idMatrix` as 0 — so offering it would alias markers onto one
+        // another rather than merely do nothing. Asserting its absence turns a
+        // future accidental re-add into a failing test.
+        expect(MATRIX_CODE_TYPES).not.toHaveProperty('global_id');
     });
 
     it('THRESHOLD_MODES', () => {

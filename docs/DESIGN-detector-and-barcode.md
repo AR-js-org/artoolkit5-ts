@@ -121,7 +121,9 @@ export type MatrixCodeType =
     | '3x3' | '3x3_PARITY65' | '3x3_HAMMING63'
     | '4x4' | '4x4_BCH_13_9_3' | '4x4_BCH_13_5_5'
     | '5x5' | '5x5_BCH_22_7_7' | '5x5_BCH_22_12_5'
-    | '6x6' | 'global_id';
+    | '6x6';
+    // 'global_id' deliberately absent: decodes into an unbound 64-bit field,
+    // and meanwhile aliases every global ID >= 32768 onto idMatrix 0. See §9.
 
 export type ThresholdMode =
     | 'manual'          // 0
@@ -312,4 +314,8 @@ Consequences for this design:
   > **Resolved**, and the reasoning changed on contact with hardware. `cfPatt`/`cfMatrix` are bound and surfaced as `MarkerPose.confidence`, with an opt-in per-family `minConfidence` ([#38](https://github.com/AR-js-org/artoolkit5-ts/issues/38)). AR.js's `0.6` was **not** adopted: measured genuine and false ranges overlap for both families, so no threshold separates them and both default to `0`. See the README.
 - **`globalID` is unreachable too.** `matrixCodeType: 'global_id'` is selectable but its 64-bit result is not bound, so that code type cannot currently be used.
 
-~~Blocked on `artoolkit5-wasm` binding `idPatt`/`idMatrix`/`dirPatt`/`dirMatrix`/`cfPatt`/`cfMatrix` (and ideally `globalID`), plus a WASM rebuild.~~ — **unblocked.** All six shipped in `artoolkit5-wasm@0.3.0`. `globalID` remains unbound, so `matrixCodeType: 'global_id'` is still unusable ([artoolkit5-wasm#29](https://github.com/AR-js-org/artoolkit5-wasm/issues/29)).
+  > **Resolved by removal**, and this description understated the problem. "Cannot be used" implies a clean no-op; the mode is not inert. In global-ID mode the engine still writes `idMatrix` — the field `processFrame` reads — mapping a decoded global ID below 32768 to itself and **every** larger one to `0` (`arPattGetID.c:213-217`). A barcode registered as `0` would therefore match every large global-ID marker in view, and with none registered they would silently never match. Since `configureDetector` had not shipped, `'global_id'` was dropped from `MatrixCodeType` rather than documented ([#41](https://github.com/AR-js-org/artoolkit5-ts/issues/41)); re-adding it once `globalID` is bound is a non-breaking addition.
+  >
+  > Two things also follow from reading that code. Nothing could have been verified either way — no global-ID markers exist upstream or in the organisation ([Marker-Creator#2](https://github.com/AR-js-org/Marker-Creator/issues/2)) — and the upstream mask is itself wrong: `codeGlobalID & 0xffff8000ULL` tests bits 15–31 of a 64-bit payload, so two distinct global IDs differing only above bit 31 both truncate to the same `idMatrix`.
+
+~~Blocked on `artoolkit5-wasm` binding `idPatt`/`idMatrix`/`dirPatt`/`dirMatrix`/`cfPatt`/`cfMatrix` (and ideally `globalID`), plus a WASM rebuild.~~ — **unblocked.** All six shipped in `artoolkit5-wasm@0.3.0`. `globalID` remains unbound ([artoolkit5-wasm#29](https://github.com/AR-js-org/artoolkit5-wasm/issues/29)), which is why `'global_id'` is no longer offered.

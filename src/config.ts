@@ -61,7 +61,6 @@ import {
     AR_MATRIX_CODE_5x5_BCH_22_7_7,
     AR_MATRIX_CODE_6x6,
     AR_MATRIX_CODE_DETECTION,
-    AR_MATRIX_CODE_GLOBAL_ID,
     AR_TEMPLATE_MATCHING_COLOR,
     AR_TEMPLATE_MATCHING_COLOR_AND_MATRIX,
     AR_TEMPLATE_MATCHING_MONO,
@@ -71,6 +70,22 @@ import { ARToolKitError } from './errors';
 
 export type DetectionMode = 'color' | 'mono' | 'matrix' | 'color_and_matrix' | 'mono_and_matrix';
 
+/**
+ * `'global_id'` is deliberately absent. `AR_MATRIX_CODE_GLOBAL_ID` decodes a
+ * 64-bit value into `markerInfo->globalID`, and that field is not bound, so
+ * nothing here can read what the mode decoded (artoolkit5-wasm#29).
+ *
+ * Offering it anyway would not leave the mode inert — it would leave it
+ * aliasing. The engine still fills `idMatrix`, the field `processFrame` reads:
+ * a global ID below 32768 is reported as itself, and **every** larger one is
+ * reported as `0` (`arPattGetID.c:213-217`). A barcode registered as `0` would
+ * therefore match every large global-ID marker in view, and with none
+ * registered those markers would silently never match at all.
+ *
+ * Re-adding it once the value is bound is a non-breaking addition. Shipping it
+ * first would be the expensive order: #29 has still to settle how a 64-bit
+ * value crosses into JavaScript, and by then that would be released API.
+ */
 export type MatrixCodeType =
     | '3x3'
     | '3x3_PARITY65'
@@ -81,8 +96,7 @@ export type MatrixCodeType =
     | '5x5'
     | '5x5_BCH_22_7_7'
     | '5x5_BCH_22_12_5'
-    | '6x6'
-    | 'global_id';
+    | '6x6';
 
 /**
  * `'auto_adaptive'` is deliberately absent. `AR_LABELING_THRESH_MODE_AUTO_ADAPTIVE`
@@ -160,7 +174,6 @@ export const MATRIX_CODE_TYPES: Record<MatrixCodeType, number> = {
     '5x5_BCH_22_7_7': AR_MATRIX_CODE_5x5_BCH_22_7_7,
     '5x5_BCH_22_12_5': AR_MATRIX_CODE_5x5_BCH_22_12_5,
     '6x6': AR_MATRIX_CODE_6x6,
-    global_id: AR_MATRIX_CODE_GLOBAL_ID,
 };
 
 export const THRESHOLD_MODES: Record<ThresholdMode, number> = {
