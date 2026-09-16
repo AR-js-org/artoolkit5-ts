@@ -72,9 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `'3x3_hamming63'`, `'4x4_bch_13_9_3'`, … | `'3x3_HAMMING63'`, `'4x4_BCH_13_9_3'`, … |
   | option `pattRatio` | option `patternRatio` |
 
-  `'matrix'` and `'global_id'` keep their names — AR.js exposes no equivalent for
-  either. `thresholdMode` and `imageProcMode` have no AR.js counterpart at all, so
-  their values simply follow the same snake_case convention for internal consistency.
+  `'matrix'` keeps its name — AR.js exposes no equivalent. `thresholdMode` and
+  `imageProcMode` have no AR.js counterpart at all, so their values simply follow
+  the same snake_case convention for internal consistency.
 
   This deliberately inherits one wart from AR.js: snake_case for mode names but
   SCREAMING_SNAKE for matrix algorithm suffixes. Matching the ecosystem was judged
@@ -89,6 +89,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 `thresholdMode: 'auto_adaptive'` is not offered: the WebARKitLib build this
 library ships compiles that mode's implementation out, and passing it would
 silently degrade to `'manual'`.
+
+`matrixCodeType: 'global_id'` is not offered either. The engine decodes that
+mode into `markerInfo->globalID`, a 64-bit field the WASM binding does not
+expose ([artoolkit5-wasm#29](https://github.com/AR-js-org/artoolkit5-wasm/issues/29)),
+so nothing here can read the result. Worse than unreadable, it would alias:
+the engine also reports the code through `idMatrix`, where a global ID below
+32768 arrives as itself but every larger one arrives as `0`. A barcode
+registered as `0` would match every large global-ID marker in view. Re-adding
+the option once the field is bound is a non-breaking addition.
+([#41](https://github.com/AR-js-org/artoolkit5-ts/issues/41))
 
 ## [0.1.0] - 2026-08-16
 
