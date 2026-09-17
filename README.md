@@ -36,7 +36,7 @@ It is renderer-agnostic and DOM-free. It gives you marker poses as matrices; wha
 npm install @ar-js-org/artoolkit5-ts
 ```
 
-[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.1.3`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
+[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.3.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
 
 `three` is only needed to run the examples, not the library.
 
@@ -75,18 +75,18 @@ for (const marker of detected) {
 
 // `lost` holds markers that were visible last frame and are not now —
 // reported once, on the frame they disappear
-for (const id of lost) {
-  hideObjectFor(id);
+for (const marker of lost) {
+  hideObjectFor(marker.type, marker.id);
 }
 ```
 
-A complete working example lives in [`examples/webcam`](examples/webcam) — webcam capture, marker tracking and a Three.js cube overlay:
+Two complete working examples — webcam capture, marker tracking and a Three.js cube overlay:
 
 ```bash
 npm run dev
 ```
 
-You will need the [Hiro marker](https://commons.wikimedia.org/wiki/File:Hiro_marker_wikipedia.png) printed or on a second screen.
+[`examples/webcam`](examples/webcam) tracks a pattern marker; you will need the [Hiro marker](https://commons.wikimedia.org/wiki/File:Hiro_marker_wikipedia.png) printed or on a second screen. [`examples/barcode`](examples/barcode) tracks a matrix code marker instead — the marker image it needs ships in `examples/barcode/data/`.
 
 ## 🧠 Why functions instead of a controller class
 
@@ -126,6 +126,77 @@ Registers a marker for tracking and allocates its reusable pose buffers.
 
 `markerWidth` defaults to `1.0`. Whatever unit you choose here is the unit all returned translations are expressed in — use millimetres if you want millimetres.
 
+### `trackBarcodeMarker(state, barcodeId, markerWidth?)`
+
+Registers a barcode (matrix code) marker for tracking. Unlike a pattern marker, there is nothing to load first: the ID is encoded directly in the marker's geometry, so `barcodeId` is a value you choose when generating the marker, not one the engine assigns — pass it straight to this function.
+
+Detecting a barcode marker also requires `configureDetector` to have set a matrix-capable `detectionMode` (`'matrix'`, `'color_and_matrix'`, or `'mono_and_matrix'`) and a `matrixCodeType` matching the marker.
+
+Pattern and barcode markers have **independent ID spaces**, and are kept in separate registries. Pattern IDs are assigned by the engine starting at 0; barcode IDs are encoded in the marker's own geometry and chosen by whoever printed it. So `7` in one family is unrelated to `7` in the other, and both can be tracked at once:
+
+```typescript
+// Pattern IDs come from the engine — never hardcode them
+const patternId = await loadPatternMarker(state, './data/patt.hiro');
+trackMarker(state, patternId);           // -> state.patternMarkers
+
+// Barcode IDs are yours: encoded in the marker you printed
+trackBarcodeMarker(state, 0);            // -> state.barcodeMarkers
+```
+
+If `patternId` also happens to be `0` — and it usually is, since the engine
+assigns from zero — both are tracked independently. Detections and losses
+carry `type`, so you can always tell which family a result came from.
+
+The engine reports each family through its own field (`idPatt` / `idMatrix`), so a detection is only ever matched against the registry it belongs to.
+
+### `configureDetector(state, opts)`
+
+Tunes the underlying detector. Only the keys you pass are changed — call it again later with a single option to adjust just that one, mid-session.
+
+```typescript
+configureDetector(state, {
+  detectionMode: 'matrix',       // 'color' | 'mono' | 'matrix' | 'color_and_matrix' | 'mono_and_matrix'
+  matrixCodeType: '4x4_BCH_13_9_3',
+  thresholdMode: 'auto_otsu',    // 'manual' | 'auto_median' | 'auto_otsu' | 'auto_bracketing'
+  threshold: 100,                // 0–255, only meaningful when thresholdMode is 'manual'
+  labelingMode: 'black_region',  // 'white_region' | 'black_region' — the engine default
+  imageProcMode: 'frame',        // 'frame' | 'field'
+  patternRatio: 0.5,             // > 0 and < 1, exclusive
+  nearPlane: 1,
+  farPlane: 1000,
+  minConfidence: { pattern: 0, barcode: 0 },   // 0–1 per family; see below
+                                               // before choosing a value
+});
+```
+
+An invalid string value or an out-of-range `threshold`/`patternRatio` throws `ARToolKitError` naming the option and, for string options, listing what it does accept — the engine itself would otherwise silently ignore the bad value and keep its previous setting, which is a much harder bug to notice.
+
+`'auto_adaptive'` threshold mode is not offered: the WebARKitLib build this library ships compiles that mode's implementation out, so passing it would silently degrade to `'manual'` while claiming to work.
+
+#### `minConfidence` — rejecting weak matches
+
+Every other option here is handed to the engine. `minConfidence` is the exception: ARToolKit's own confidence cutoff is a compile-time constant with no setter, so this threshold is applied by `processFrame` instead. It can only ever be *stricter* than the engine's built-in 0.5.
+
+The two families take separate thresholds because their confidences are not comparable.
+
+**There is no safe default value, and this library does not ship one.** Measured on a real camera with a Hiro pattern marker and 3x3 matrix markers:
+
+| | genuine match | false match |
+|---|---|---|
+| **pattern** (template matching) | 0.506 – 0.923 | 0.526 – 0.554 *(read off a barcode square)* |
+| **barcode** (matrix code) | 0.500 – 1.000 | 0.633 – 0.867 *(read off a pattern square)* |
+
+Both ranges **overlap**, in both directions. A genuine pattern match scored `0.506`, below a false one at `0.554`. A genuine barcode scored `0.500` at an awkward angle while a phantom barcode — the engine decoding a Hiro marker's interior as a 3x3 grid — reached `0.867`. The same barcode marker, in the same detection mode minutes apart, ranged from `0.500` to `0.967` purely on viewing angle and focus.
+
+So confidence is a continuous quality score, not a verdict, for **both** families. Matrix codes are *not* digital in this respect: a clean decode does not imply `1.0`.
+
+What that means in practice:
+
+- Both thresholds default to `0` — nothing is filtered beyond the engine's own 0.5 cutoff.
+- Any threshold you set trades missed real markers against admitted phantoms. There is no value that avoids both.
+- Measure **your** markers, in **your** lighting, at the angles you expect. Log `marker.confidence` for a while before choosing a number.
+- A threshold is most defensible when you control the conditions — fixed mounting, known print quality, consistent lighting — and least defensible in an uncontrolled environment.
+
 ### `processFrame(state, videoFrame)`
 
 Detects registered markers in one frame. Returns a `FrameResult`:
@@ -133,9 +204,11 @@ Detects registered markers in one frame. Returns a `FrameResult`:
 ```typescript
 interface FrameResult {
   detected: MarkerPose[];  // visible in this frame
-  lost: number[];          // IDs visible last frame, gone in this one
+  lost: LostMarker[];      // { id, type } visible last frame, gone in this one
 }
 ```
+
+Each `lost` entry carries `type` as well as `id`, because the two families have independent ID spaces — a pattern `7` and a barcode `7` may both be registered, and an ID alone could not say which disappeared.
 
 `lost` is reported **exactly once**, on the frame a marker disappears — it does not repeat while the marker stays absent. Tracking already computes this transition internally, so exposing it saves every consumer from diffing successive results to recover it.
 
@@ -173,15 +246,21 @@ Both take an optional output buffer — supply one in hot paths to avoid allocat
 
 ### Types
 
-`ARToolKitState`, `MarkerPose`, `FrameResult`, `TrackedMarkerState`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary.
+`ARToolKitState`, `MarkerPose`, `FrameResult`, `LostMarker`, `TrackedMarkerState`, `MarkerType`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
 
 ```typescript
 interface MarkerPose {
   id: number;
+  type: 'pattern' | 'barcode';
+  confidence: number;      // 0–1, from this marker's own family
   matrix: Float64Array;    // 3x4, row-major, as ARToolKit produces it
   matrixGL: Float32Array;  // 4x4, column-major, right-handed, WebGL-ready
 }
 ```
+
+`confidence` is read from the field belonging to the marker's family — `cfPatt` or `cfMatrix` — so it is comparable within a family but not across them. See [`minConfidence`](#minconfidence--rejecting-weak-matches) for measured ranges.
+
+`type` says which family a detection came from. The engine reports the two through separate fields — `idPatt` for pattern markers, `idMatrix` for barcode markers — and each is matched only against its own registry, so `type` follows from which registry answered rather than from any value the engine supplies. This is also why the families have independent ID spaces: the same integer in each is two unrelated markers.
 
 ## 🖼️ Feeding frames from an ImageBitmap
 
@@ -206,17 +285,19 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## ⚠️ Limitations
 
-- **Pattern markers only.** Barcode/matrix markers are planned; NFT is out of scope for this project — see [Roadmap](#-roadmap).
-- **No detector tuning yet.** Threshold, threshold mode, labelling mode and related settings are exposed by the engine but not yet surfaced here.
+- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color_and_matrix'` and `'mono_and_matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.3.0`; this matters only if you override it.
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
+- **NFT markers are out of scope** for this project — see [Roadmap](#-roadmap).
 
 ## 🗺️ Roadmap
 
-Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is tracked in [issues](https://github.com/AR-js-org/artoolkit5-ts/issues).
+Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md) and, for the detector and barcode work, [`docs/DESIGN-detector-and-barcode.md`](docs/DESIGN-detector-and-barcode.md); work is tracked in [issues](https://github.com/AR-js-org/artoolkit5-ts/issues).
 
 **v0.1** (done) — lifecycle, packaging, marker-lost reporting from `processFrame`, a test suite and CI.
 
-**Next** — `configureDetector` for threshold and labelling settings, barcode markers, a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
+**v0.2** (done) — `configureDetector`, barcode markers, independent ID registries for the two families, combined pattern+barcode detection verified against a real camera, and per-family match confidence.
+
+**Next** — a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
 
 **Out of scope** — NFT tracking. This project and `artoolkit5-wasm` cover pattern and barcode markers; NFT belongs to other projects in the ecosystem.
 

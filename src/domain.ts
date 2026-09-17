@@ -38,6 +38,17 @@
  */
 
 /**
+ * Which family a registered marker belongs to.
+ *
+ * The engine reports each family through its own field — `idPatt` for
+ * pattern markers, `idMatrix` for barcode markers — so a detection is
+ * matched against the registry by the field that produced it. This type
+ * records which field a given registration answers to. See `trackMarker`
+ * and `trackBarcodeMarker`.
+ */
+export type MarkerType = 'pattern' | 'barcode';
+
+/**
  * Detection result for a single marker in a single frame.
  *
  * `matrix` and `matrixGL` are views onto buffers owned by the tracker and
@@ -50,6 +61,20 @@
  */
 export interface MarkerPose {
     id: number;
+    type: MarkerType;
+    /**
+     * How strongly the engine matched this marker, 0.0 to 1.0.
+     *
+     * Read from the field belonging to this marker's family — `cfPatt` for a
+     * pattern marker, `cfMatrix` for a barcode — so the two are directly
+     * comparable only within a family, not across them.
+     *
+     * A continuous quality score for both families, not a verdict: the same
+     * marker moves across a wide range with viewing angle, distance and focus.
+     * A high value is not proof of a genuine match, nor a low one proof of a
+     * false one — the ranges overlap. See `MinConfidence`.
+     */
+    confidence: number;
     /**
      * 3x4 row-major pose, exactly as ARToolKit produces it.
      *
@@ -80,14 +105,29 @@ export interface FrameResult {
     /** Markers visible in this frame, with their poses. */
     detected: MarkerPose[];
     /**
-     * IDs of markers visible in the previous frame but not this one.
+     * Markers visible in the previous frame but not this one.
      *
      * Reported exactly once, on the frame the marker disappears.
+     *
+     * Carries `type` as well as `id` because the two families have
+     * independent ID spaces: a pattern marker and a barcode marker may both
+     * be registered as `5`, and an ID alone could not say which was lost.
      */
-    lost: number[];
+    lost: LostMarker[];
 }
 
-/** Per-marker tracking state, owned by {@link ARToolKitState}. */
+/** A marker that was visible in the previous frame and is not in this one. */
+export interface LostMarker {
+    id: number;
+    type: MarkerType;
+}
+
+/**
+ * Per-marker tracking state, owned by {@link ARToolKitState}.
+ *
+ * Carries no `type`: which registry a marker lives in already determines its
+ * family, so storing it again would allow the two to disagree.
+ */
 export interface TrackedMarkerState {
     id: number;
     markerWidth: number;
@@ -115,10 +155,34 @@ export interface ARToolKitModule {
     addMarker(path: string): number;
 }
 
-/** Marker metadata returned by the detector for one candidate square. */
+/**
+ * Marker metadata returned by the detector for one candidate square.
+ *
+ * ARToolKit reports results in three families, and each is only valid in the
+ * detection modes that populate it — a field the active mode did not write
+ * would otherwise expose uninitialised engine memory. The binding reports
+ * `-1` for any family the mode does not populate, so every field here is
+ * always safe to read; `-1` uniformly means "no match".
+ *
+ * Requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0, which is where the
+ * per-mode fields were first bound.
+ */
 export interface MarkerInfo {
-    /** Engine-assigned marker ID, or -1 when unrecognised. */
+    /**
+     * Marker ID, or -1. Only meaningful when `detectionMode` is pattern-only
+     * *or* matrix-only — never both. Reported as -1 in the combined modes,
+     * where a single unified ID would be ambiguous. Prefer `idPatt` and
+     * `idMatrix`, which are valid in every mode that can produce them.
+     */
     id: number;
+    /** Pattern-marker ID, or -1. Valid when the mode includes template matching. */
+    idPatt: number;
+    /** Barcode (matrix code) ID, or -1. Valid when the mode includes matrix detection. */
+    idMatrix: number;
+    /** Template-match confidence, 0.0-1.0, or -1.0 when there was no match. */
+    cfPatt: number;
+    /** Matrix-code confidence, 0.0-1.0, or -1.0 when there was no match. */
+    cfMatrix: number;
 }
 
 /**
@@ -138,6 +202,22 @@ export interface ARToolKitCore {
     /** Byte offset into `HEAPF64` holding the most recent 3x4 pose. */
     getTransform(): number;
     getCameraLens(): Float64Array;
+    /**
+     * Recomputes the cached projection matrix `getCameraLens` returns, from
+     * whatever `nearPlane`/`farPlane` currently hold. `setProjectionNearPlane`
+     * and `setProjectionFarPlane` only assign those fields — the matrix stays
+     * stale until this is called.
+     */
+    recalculateCameraLens(): void;
+    setPatternDetectionMode(mode: number): void;
+    setMatrixCodeType(type: number): void;
+    setThreshold(threshold: number): void;
+    setThresholdMode(mode: number): void;
+    setLabelingMode(mode: number): void;
+    setImageProcMode(mode: number): void;
+    setPattRatio(ratio: number): void;
+    setProjectionNearPlane(nearPlane: number): void;
+    setProjectionFarPlane(farPlane: number): void;
     /** Releases the ARToolKit handles held by the C++ instance. */
     teardown(): number;
     /** Frees the C++ instance itself. Generated by Embind, not declared in C++. */
@@ -155,8 +235,31 @@ export interface ARToolKitState {
     readonly core: ARToolKitCore;
     readonly width: number;
     readonly height: number;
-    /** Registered markers, keyed by engine-assigned ID. */
-    markers: Record<number, TrackedMarkerState>;
+    /**
+     * Pattern markers, keyed by the engine-assigned ID `loadPatternMarker`
+     * returned — matched against `getMarkerInfo`'s `idPatt`.
+     */
+    patternMarkers: Record<number, TrackedMarkerState>;
+    /**
+     * Barcode markers, keyed by the ID encoded in the marker's own geometry —
+     * matched against `getMarkerInfo`'s `idMatrix`.
+     *
+     * Separate from {@link ARToolKitState.patternMarkers} because the two
+     * families occupy independent ID spaces: pattern IDs are assigned by the
+     * engine starting at 0, barcode IDs are chosen by whoever printed the
+     * marker, and `5` in one is unrelated to `5` in the other.
+     */
+    barcodeMarkers: Record<number, TrackedMarkerState>;
+    /**
+     * Confidence below which a detection is discarded, per family.
+     *
+     * Enforced here rather than in the engine: ARToolKit's own cutoff
+     * (`AR_CONFIDENCE_CUTOFF_DEFAULT`, 0.5) is a compile-time constant with no
+     * setter, so this filters on top of it and can only ever be stricter.
+     * Both default to 0, meaning no filtering beyond the engine's own.
+     * Set through `configureDetector`.
+     */
+    minConfidence: { pattern: number; barcode: number };
     /**
      * Set by `disposeARToolKitState`. Once true the C++ instance is gone and
      * every operation on this state throws rather than reaching freed memory.

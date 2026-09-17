@@ -8,6 +8,14 @@ name: Release
 # default GITHUB_TOKEN does not trigger other workflows — GitHub blocks that to
 # prevent recursion — so a separate `on: release: published` publisher would
 # silently never fire.
+#
+# It is two *jobs* on purpose as well. Everything irreversible lives in
+# `release`, which carries a single `if: ${{ !inputs.dry_run }}` on the job
+# rather than repeated on every step. A step added there inherits the guard, so
+# the failure this structure exists to prevent — someone adds a publish target,
+# forgets the `if:`, and a run invoked with dry_run publishes anyway — is no
+# longer possible to write. npm never allows a version to be replaced, so that
+# mistake would have been unrecoverable.
 on:
   workflow_dispatch:
     inputs:
@@ -21,21 +29,34 @@ on:
         default: false
         type: boolean
 
+# Two releases running at once would race over the tag and the branch push.
+# Never `cancel-in-progress` here: cancelling a run that has already published
+# leaves a version on npm with no tag and no Release behind it, and npm will not
+# let that version be replaced. Queueing is the only safe behaviour.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  release:
+  # Everything that can fail safely. Nothing here leaves the runner: no commit,
+  # no tag, no Release, no package. A dry run ends when this job does.
+  prepare:
     runs-on: ubuntu-latest
 
     permissions:
-      # Pushing the version commit and tag, and creating the Release.
-      contents: write
-      # npm provenance: mints the OIDC token letting npm attest which workflow
-      # run and commit produced the tarball.
-      id-token: write
+      contents: read
+
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
+          # Pinned to the dispatched commit rather than the branch tip so the
+          # release job tags and publishes exactly what was tested here, even if
+          # someone pushes to main while the run is in progress.
+          ref: ${{ github.sha }}
           # Full history: release notes are derived from commits since the
           # previous tag, and a shallow clone has neither the tags nor the log.
           fetch-depth: 0
@@ -45,19 +66,33 @@ jobs:
         run: |
           echo "::error::Release workflow must be run from the main branch (current: ${GITHUB_REF_NAME})."
           exit 1
+
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22.x'
           cache: 'npm'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Validate the version
+        id: validate
+        # Read from the environment rather than interpolated into the script.
+        # `${{ }}` substitution happens before the shell parses anything, so a
+        # dispatch input spliced straight into `run:` is executed as code — the
+        # regex below would never get to see it.
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="$INPUT_VERSION"
 
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::'$VERSION' is not a valid semver version. Give it without a leading v, e.g. 0.1.0."
+          # Matched with bash's own `=~` rather than piped through grep. grep is
+          # line-oriented, so `0.2.0\nFOO=pwned` matches on its first line and
+          # passes — and `echo "VERSION=$VERSION" >> "$GITHUB_ENV"` below would
+          # then write FOO=pwned as a second environment record for every later
+          # step. `[[ =~ ]]` anchors ^ and $ to the whole string, newline and
+          # all, so a multi-line value is rejected outright.
+          SEMVER='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if ! [[ "$VERSION" =~ $SEMVER ]]; then
+            echo "::error::'$INPUT_VERSION' is not a valid semver version. Give it without a leading v, e.g. 0.1.0."
             exit 1
           fi
 
@@ -66,7 +101,10 @@ jobs:
             exit 1
           fi
 
+          # GITHUB_ENV for the rest of this job; GITHUB_OUTPUT so the release
+          # job can read it, since env does not cross a job boundary.
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       # npm will not generate provenance for a package built in a private
       # repository. Left unchecked that surfaces at the publish step, by which
@@ -136,6 +174,25 @@ jobs:
       - name: Show what would be published
         run: npm pack --dry-run
 
+      # Handing the built tree to the release job, rather than rebuilding it
+      # there, is what makes the dry run meaningful: the tarball that gets
+      # published is the one `npm pack --dry-run` just reported on, not a second
+      # build that happens to be made from the same sources.
+      - name: Stage the release for the publishing job
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ steps.validate.outputs.version }}
+          path: |
+            package.json
+            package-lock.json
+            CHANGELOG.md
+            release-notes.md
+            dist
+          if-no-files-found: error
+          # Purely a hand-off between two jobs of one run. A dry run's copy is
+          # worth keeping briefly so it can be downloaded and inspected.
+          retention-days: 7
+
       - name: Stop here on a dry run
         if: ${{ inputs.dry_run }}
         run: |
@@ -144,21 +201,94 @@ jobs:
             echo ""
             echo "Version \`$VERSION\` passed every check."
             echo ""
+            echo "The \`release\` job was skipped in full, so nothing left this runner."
+            echo "The staged artifact above is what a real run would publish."
+            echo ""
             cat release-notes.md
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Dry run complete. No tag, no release, no publish."
 
+  # Everything that cannot be undone. The `if:` below is the only thing standing
+  # between a dry run and npm, and it guards the whole job — so a step added
+  # here is covered whether or not whoever adds it remembers this comment.
+  release:
+    needs: prepare
+    if: ${{ !inputs.dry_run }}
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Pushing the version commit and tag, and creating the Release.
+      contents: write
+      # npm provenance: mints the OIDC token letting npm attest which workflow
+      # run and commit produced the tarball.
+      id-token: write
+
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The same pin as `prepare`, for the same reason.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      # No `npm ci` here on purpose: publishing needs the manifest and dist/,
+      # not the dependency tree, and there are no publish lifecycle scripts to
+      # run. Reinstalling would only add a chance for the published tree to
+      # differ from the verified one.
+      # v8 against upload-artifact's v7 is the matching pair, not a typo: the
+      # download side has been one major ahead since its v5, which changed
+      # path handling for downloads by *id*. This downloads by name, which that
+      # release explicitly left alone.
+      - name: Restore the prepared release
+        uses: actions/download-artifact@v8
+        with:
+          name: release-${{ needs.prepare.outputs.version }}
+          path: .prepared
+
+      - name: Apply the prepared release over the checkout
+        # Extracted to a scratch directory first, rather than unpacked straight
+        # over the working tree, so the overwrite is this workflow's decision
+        # rather than whatever the download action does with existing paths.
+        #
+        # Copied wholesale, though, not file by file: the artifact's own `path:`
+        # list in `prepare` is the single definition of what crosses between the
+        # jobs. Re-enumerating it here would mean a file added there silently
+        # never arriving.
+        run: |
+          rm -rf dist
+          cp -R .prepared/. .
+          rm -rf .prepared
+
+          PACKED="$(node -p "require('./package.json').version")"
+          if [ "$PACKED" != "$VERSION" ]; then
+            echo "::error::Prepared package.json is at $PACKED but this run is releasing $VERSION."
+            exit 1
+          fi
+          echo "Restored the tree prepared for $VERSION."
+
       - name: Commit and tag
-        if: ${{ !inputs.dry_run }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 
           git add package.json package-lock.json CHANGELOG.md
 
-          # With the version already set by hand and the changelog promoted in
-          # an earlier commit, there may be nothing left to record. `git commit`
-          # treats that as an error, so tag what is already there instead.
+          # Defensive only. `git commit` errors when there is nothing staged, so
+          # this tags what is already there instead. In practice it does not
+          # trigger: promote-changelog.mjs always rewrites CHANGELOG.md, and it
+          # refuses to run at all if the version was promoted by hand first
+          # ("already has a ## [X.Y.Z] section"). A successful release therefore
+          # always has a commit to make, and always needs the branch push below.
           if git diff --staged --quiet; then
             echo "No release changes to commit; tagging the current commit."
           else
@@ -167,11 +297,27 @@ jobs:
 
           git tag -a "v$VERSION" -m "Release $VERSION"
 
-          git push origin HEAD:"${GITHUB_REF_NAME}"
+          # Branch before tag, deliberately: if the push is rejected the tag
+          # never leaves the runner, no Release is created and nothing is
+          # published, so the run can simply be retried once the cause is fixed.
+          #
+          # Pushed unconditionally. With nothing committed it is a no-op that
+          # succeeds, which is simpler than carrying a flag for a branch that
+          # cannot be reached anyway: promote-changelog.mjs always rewrites
+          # CHANGELOG.md, and refuses to run at all against an already-promoted
+          # version, so a successful release always has a commit to make.
+          #
+          # Neither rejection below can be detected in advance. Reading branch
+          # protection needs admin rights, and `permissions:` has no scope that
+          # grants the workflow token any — a preflight would have reported "not
+          # protected" precisely when protection existed.
+          if ! git push origin HEAD:"${GITHUB_REF_NAME}"; then
+            echo "::error::Pushing the release commit to ${GITHUB_REF_NAME} was rejected. Nothing was tagged or published, so this run can be retried. Two causes are worth checking, and they need opposite responses. (1) Non-fast-forward: both jobs are pinned to ${{ github.sha }}, so anything pushed to ${GITHUB_REF_NAME} after this run started makes the release commit unmergeable — re-run the workflow against the new tip. (2) ${GITHUB_REF_NAME} is protected against direct pushes: either exempt github-actions[bot] from the restriction, or change this workflow to open a pull request with the version commit and tag once it merges. Preparing the release by hand beforehand is not a third option — promote-changelog.mjs refuses to run against an already-promoted version."
+            exit 1
+          fi
           git push origin "v$VERSION"
 
       - name: Create the GitHub Release
-        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -183,13 +329,11 @@ jobs:
       # --access public is required for the first publish of a scoped package;
       # npm otherwise defaults it to restricted and fails on a free account.
       - name: Publish to npm
-        if: ${{ !inputs.dry_run }}
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Summarise
-        if: ${{ !inputs.dry_run }}
         run: |
           NAME="$(node -p "require('./package.json').name")"
           {

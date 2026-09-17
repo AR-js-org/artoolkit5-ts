@@ -44,6 +44,24 @@ export interface CoreCalls {
     transMatCont: number[];
     /** Candidate indices passed to the from-scratch variant. */
     transMat: number[];
+    /**
+     * How many times the projection matrix was recomputed. `setProjectionNearPlane`
+     * and `setProjectionFarPlane` only assign a field — this is the only signal
+     * that `getCameraLens`'s cached result was actually refreshed.
+     */
+    recalculateCameraLens: number;
+    /** Most recent argument to each detector setter, keyed by method name. */
+    detector: {
+        setPatternDetectionMode?: number;
+        setMatrixCodeType?: number;
+        setThreshold?: number;
+        setThresholdMode?: number;
+        setLabelingMode?: number;
+        setImageProcMode?: number;
+        setPattRatio?: number;
+        setProjectionNearPlane?: number;
+        setProjectionFarPlane?: number;
+    };
 }
 
 export interface MockCoreOptions {
@@ -55,6 +73,12 @@ export interface MockCoreOptions {
     visibleIds?: number[][];
     /** Pose values the heap yields, so tests can assert what was copied out. */
     pose?: number[];
+    /**
+     * Match confidence the detector reports, per family. Defaults to 1 for
+     * both — a perfect match, so confidence filtering is inert unless a test
+     * opts into it.
+     */
+    confidence?: { pattern?: number; matrix?: number };
 }
 
 /**
@@ -73,8 +97,17 @@ export function createMockState(options: MockCoreOptions = {}): {
 } {
     const visibleIds = options.visibleIds ?? [[]];
     const pose = options.pose ?? Array.from({ length: POSE_ELEMENT_COUNT }, (_, i) => i + 1);
+    const cfPatt = options.confidence?.pattern ?? 1;
+    const cfMatrix = options.confidence?.matrix ?? 1;
 
-    const calls: CoreCalls = { teardown: 0, delete: 0, transMatCont: [], transMat: [] };
+    const calls: CoreCalls = {
+        teardown: 0,
+        delete: 0,
+        transMatCont: [],
+        transMat: [],
+        recalculateCameraLens: 0,
+        detector: {},
+    };
 
     // The library reads poses at `getTransform() >> 3`, so the pose is placed at
     // a known offset and that offset is returned as a byte address.
@@ -104,7 +137,19 @@ export function createMockState(options: MockCoreOptions = {}): {
             },
             detectMarker: () => undefined,
             getMarkerNum: () => currentIds().length,
-            getMarkerInfo: (index: number) => ({ id: currentIds()[index] }),
+            // Reports each visible ID in *both* families. The real engine
+            // usually populates only one, but reporting both is the strictest
+            // input the library can get: only the registry a family is looked
+            // up in separates them, so resolving one family against the other's
+            // registry surfaces here as a wrong or duplicated detection.
+            // `id` is deliberately -1, as the engine reports it in the
+            // combined detection modes. Any regression to reading it instead
+            // of the per-mode fields then fails every detection test loudly,
+            // rather than passing because the mock happened to populate it.
+            getMarkerInfo: (index: number) => {
+                const id = currentIds()[index];
+                return { id: -1, idPatt: id, idMatrix: id, cfPatt, cfMatrix };
+            },
             getTransMatSquare: (index: number) => {
                 calls.transMat.push(index);
             },
@@ -113,6 +158,36 @@ export function createMockState(options: MockCoreOptions = {}): {
             },
             getTransform: () => POSE_HEAP_INDEX * Float64Array.BYTES_PER_ELEMENT,
             getCameraLens: () => new Float64Array(16).fill(0.5),
+            recalculateCameraLens: () => {
+                calls.recalculateCameraLens += 1;
+            },
+            setPatternDetectionMode: (mode: number) => {
+                calls.detector.setPatternDetectionMode = mode;
+            },
+            setMatrixCodeType: (type: number) => {
+                calls.detector.setMatrixCodeType = type;
+            },
+            setThreshold: (threshold: number) => {
+                calls.detector.setThreshold = threshold;
+            },
+            setThresholdMode: (mode: number) => {
+                calls.detector.setThresholdMode = mode;
+            },
+            setLabelingMode: (mode: number) => {
+                calls.detector.setLabelingMode = mode;
+            },
+            setImageProcMode: (mode: number) => {
+                calls.detector.setImageProcMode = mode;
+            },
+            setPattRatio: (ratio: number) => {
+                calls.detector.setPattRatio = ratio;
+            },
+            setProjectionNearPlane: (nearPlane: number) => {
+                calls.detector.setProjectionNearPlane = nearPlane;
+            },
+            setProjectionFarPlane: (farPlane: number) => {
+                calls.detector.setProjectionFarPlane = farPlane;
+            },
             teardown: () => {
                 calls.teardown += 1;
                 return 0;
@@ -123,7 +198,9 @@ export function createMockState(options: MockCoreOptions = {}): {
         },
         width: 640,
         height: 480,
-        markers: {},
+        patternMarkers: {},
+        barcodeMarkers: {},
+        minConfidence: { pattern: 0, barcode: 0 },
         disposed: false,
     };
 

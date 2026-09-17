@@ -36,13 +36,26 @@ export type {
     ARToolKitModule,
     ARToolKitState,
     FrameResult,
+    LostMarker,
     MarkerInfo,
     MarkerPose,
+    MarkerType,
     TrackedMarkerState,
 } from './domain';
 
+export type {
+    DetectionMode,
+    DetectorOptions,
+    MinConfidence,
+    ImageProcMode,
+    LabelingMode,
+    MatrixCodeType,
+    ThresholdMode,
+} from './config';
+
 export { ARToolKitError } from './errors';
 export { createARToolKitState, disposeARToolKitState } from './init';
+export { configureDetector } from './detector';
 export { loadPatternMarker } from './markers';
-export { processFrame, trackMarker } from './tracking';
+export { processFrame, trackBarcodeMarker, trackMarker } from './tracking';
 export { arglCameraViewRHf, getCameraProjectionMatrix, transMatToGLMat } from './math';

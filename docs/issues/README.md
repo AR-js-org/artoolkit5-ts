@@ -1,31 +1,54 @@
 # Issue drafts for AR-js-org/artoolkit5-ts
 
-Ready to paste once the repository exists. Each file is a complete issue body.
+Historical drafts, written before the repository existed. **All of them have been
+filed.** The GitHub issues are the live record — these files are kept for their
+design reasoning and are not updated.
 
-Create them with:
+> ⚠️ **Draft numbers are not issue numbers.** They diverge, and in two cases they
+> cross over: draft `10` is issue #13, draft `11` is issue #12. Referring to a
+> draft number as though it were an issue number is what put a reference to a
+> nonexistent "#06" into issue #9. Always use the table below or the link in each
+> file's header.
 
-```bash
-gh issue create --repo AR-js-org/artoolkit5-ts --title "<title from the file>" --body-file docs/issues/01-remove-logging.md
-```
+## Filed as
 
-## Suggested order
+| Draft file | Filed as | State |
+|---|---|---|
+| `01-remove-logging.md` | [#3](https://github.com/AR-js-org/artoolkit5-ts/issues/3) | closed |
+| `02-fix-typing-bugs.md` | [#4](https://github.com/AR-js-org/artoolkit5-ts/issues/4) | closed |
+| `03-zero-allocation-hot-path.md` | [#5](https://github.com/AR-js-org/artoolkit5-ts/issues/5) | closed |
+| `04-lifecycle-dispose.md` | [#6](https://github.com/AR-js-org/artoolkit5-ts/issues/6) | closed |
+| `05-frame-result-lost.md` | [#7](https://github.com/AR-js-org/artoolkit5-ts/issues/7) | closed |
+| `06-configure-detector.md` | [#8](https://github.com/AR-js-org/artoolkit5-ts/issues/8) | **open** |
+| `07-barcode-markers.md` | [#9](https://github.com/AR-js-org/artoolkit5-ts/issues/9) | **open** |
+| `08-verify-camera-lens.md` | [#10](https://github.com/AR-js-org/artoolkit5-ts/issues/10) | **open** |
+| `09-worker-example.md` | [#11](https://github.com/AR-js-org/artoolkit5-ts/issues/11) | **open** |
+| `10-tests-vitest.md` | [#13](https://github.com/AR-js-org/artoolkit5-ts/issues/13) | closed |
+| `11-ci-workflow.md` | [#12](https://github.com/AR-js-org/artoolkit5-ts/issues/12) | closed |
+| `12-readme-license-packaging.md` | [#14](https://github.com/AR-js-org/artoolkit5-ts/issues/14) | closed |
+| `13-upstream-constants.md` | [artoolkit5-constants#2](https://github.com/AR-js-org/artoolkit5-constants/issues/2) | closed |
 
-| # | File | Milestone | Blocks |
-|---|---|---|---|
-| 01 | `01-remove-logging.md` | v0.1 | — |
-| 02 | `02-fix-typing-bugs.md` | v0.1 | — |
-| 03 | `03-zero-allocation-hot-path.md` | v0.1 | 02 |
-| 04 | `04-lifecycle-dispose.md` | v0.1 | — |
-| 05 | `05-frame-result-lost.md` | v0.1 | 02 |
-| 06 | `06-configure-detector.md` | v0.1 | — |
-| 07 | `07-barcode-markers.md` | v0.1 | 06 |
-| 08 | `08-verify-camera-lens.md` | v0.1 | spike |
-| 09 | `09-worker-example.md` | v0.1 | 04 |
-| 10 | `10-tests-vitest.md` | v0.1 | 02, 05, 06 |
-| 11 | `11-ci-workflow.md` | v0.1 | 10 |
-| 12 | `12-readme-license-packaging.md` | v0.1 | — |
-| 13 | `13-upstream-constants.md` | upstream | filed on `artoolkit5-constants` |
+## Where the drafts are now out of date
 
-## Do not file
+The drafts were written against `@ar-js-org/artoolkit5-constants@0.1.0` and
+reflect what was true then. Two of the still-open ones argue from premises that
+have since been fixed:
 
-The `getCameraMatrix` issue drafted at the end of `.agents/Gemini-Ristrutturazione ARToolkit.js! Analisi Funzionale.md` is **moot**. `getCameraLens` already provides that data. See D10 in `docs/DESIGN-v0.1.md`.
+- **`06-configure-detector.md` / #8** — argues for string unions on the grounds
+  that the constants package lacks `AR_MATRIX_CODE_*` values and combined
+  detection modes. `0.2.0` generates all of them. String unions remain the
+  chosen design, but for ergonomic reasons rather than that one.
+- **`07-barcode-markers.md` / #9** — records the combined-mode risk as the
+  constants being ungenerated. They now exist; the real constraint is that
+  `getMarkerInfo` does not bind `idPatt`/`idMatrix`, so pattern-vs-barcode
+  cannot be read from the engine.
+
+Both are superseded by [`docs/DESIGN-detector-and-barcode.md`](../DESIGN-detector-and-barcode.md),
+which is the current design of record for that work.
+
+## Not filed
+
+The `getCameraMatrix` issue drafted at the end of
+`.agents/Gemini-Ristrutturazione ARToolkit.js! Analisi Funzionale.md` is **moot** —
+`getCameraLens` already provides that data. See D10 in
+[`docs/DESIGN-v0.1.md`](../DESIGN-v0.1.md).

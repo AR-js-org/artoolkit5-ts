@@ -32,10 +32,21 @@
  */
 
 /**
- * Webcam example: camera frames in, tracked marker pose out, Three.js cube on top.
+ * Barcode marker example: camera frames in, tracked barcode pose out, Three.js
+ * cube on top. Deliberately structured the same as `examples/webcam` — the
+ * only difference from a pattern marker is registration, not detection or
+ * rendering, and keeping the two examples parallel makes that obvious.
  *
- * All DOM and rendering concerns live here. The library itself stays free of
- * both, which is why this file — not `src/` — owns the canvas and the scene.
+ * Unlike the webcam example, there is no `.patt` file to load: the ID is
+ * `trackBarcodeMarker`'s own argument, encoded directly in the marker's
+ * geometry rather than assigned by the engine.
+ *
+ * Also registers the webcam example's Hiro pattern marker and exposes a
+ * detection-mode switcher, so `'mono_and_matrix'`/`'color_and_matrix'` — detecting
+ * both marker families at once — can be verified against the real engine.
+ * See docs/DESIGN-detector-and-barcode.md §9 and issue #33: the mocked test
+ * suite can prove `configureDetector` calls the right setter, but not that
+ * the engine then finds two different kinds of markers in one frame.
  */
 
 import {
@@ -54,10 +65,11 @@ import {
     getCameraProjectionMatrix,
     loadPatternMarker,
     processFrame,
+    trackBarcodeMarker,
     trackMarker,
     type ARToolKitState,
+    type DetectionMode,
     type MarkerPose,
-    type ThresholdMode,
 } from '../../src/index';
 
 // Vite resolves this to a hashed asset URL at build time; the WASM loader
@@ -67,15 +79,28 @@ import wasmUrl from '/node_modules/@ar-js-org/artoolkit5-wasm/dist/artoolkit5.wa
 const FRAME_WIDTH = 640;
 const FRAME_HEIGHT = 480;
 const MARKER_WIDTH = 1.0;
-const CAMERA_PARAM_URL = './data/camera_para.dat';
-const MARKER_PATTERN_URL = './data/patt.hiro';
+// Same calibration file as examples/webcam — nothing about the camera changes
+// between marker families, only which marker is being detected.
+const CAMERA_PARAM_URL = '../webcam/data/camera_para.dat';
+// Reusing the webcam example's own pattern marker — this page needs both
+// families registered to test combined-mode detection.
+const MARKER_PATTERN_URL = '../webcam/data/patt.hiro';
 
-// ARToolKitCore's own C++ defaults (ARToolKitCore.cpp constructor).
-const DEFAULT_THRESHOLD = 100;
-const DEFAULT_NEAR_PLANE = 0.0001;
-const DEFAULT_FAR_PLANE = 1000;
+// data/marker_05_3x3.jpg encodes ID 5 as a 3x3 matrix code. Print it or
+// display it on a second screen, the same as the Hiro marker in the webcam
+// example.
+const BARCODE_ID = 5;
 
-const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto_median', 'auto_otsu', 'auto_bracketing'];
+// All five modes, so a marker can be compared single-family against combined
+// on one page. That contrast is the point of this example: it is what shows
+// `'matrix'` ignoring a pattern marker, and the combined modes finding both.
+const DETECTION_MODES: DetectionMode[] = [
+    'matrix',
+    'mono_and_matrix',
+    'color_and_matrix',
+    'mono',
+    'color',
+];
 
 async function main(): Promise<void> {
     const stage = getStage();
@@ -96,11 +121,20 @@ async function main(): Promise<void> {
             wasmUrl
         );
 
-        const markerId = await loadPatternMarker(state, MARKER_PATTERN_URL);
-        trackMarker(state, markerId, MARKER_WIDTH);
+        // Barcode markers are only detected once the engine is in a matrix-capable
+        // mode. This is the one step a pattern-only consumer never needs.
+        applyDetectionMode(state, 'matrix');
+
+        // Both families are registered regardless of the active mode. That is
+        // harmless under plain 'matrix': the template-matching pass that would
+        // find the pattern marker simply never runs for that mode, so it sits
+        // registered but unmatched until a combined mode is selected.
+        const patternId = await loadPatternMarker(state, MARKER_PATTERN_URL);
+        trackMarker(state, patternId, MARKER_WIDTH);
+        trackBarcodeMarker(state, BARCODE_ID, MARKER_WIDTH);
 
         const scene = createScene(stage, state);
-        createControlPanel(state, scene.camera);
+        const controlPanel = createControlPanel(state);
         const tracking = state;
 
         renderContinuously(() => {
@@ -108,6 +142,7 @@ async function main(): Promise<void> {
             if (!pixels) return;
 
             const { detected, lost } = processFrame(tracking, pixels);
+            controlPanel.updateLog(detected);
 
             if (lost.length > 0) {
                 console.log('marker lost:', lost.map((m) => `${m.type} id ${m.id}`).join(', '));
@@ -132,6 +167,15 @@ function releaseCamera(video: HTMLVideoElement): void {
         }
     }
     video.srcObject = null;
+}
+
+/**
+ * The single place `detectionMode` is applied, used both for the initial
+ * mode and every subsequent change from the panel — so the default and the
+ * switcher can never independently drift out of sync.
+ */
+function applyDetectionMode(state: ARToolKitState, mode: DetectionMode): void {
+    configureDetector(state, { detectionMode: mode, matrixCodeType: '3x3' });
 }
 
 function getStage(): HTMLElement {
@@ -206,8 +250,6 @@ function createScene(stage: HTMLElement, state: ARToolKitState): Stage {
 
     const scene = new Scene();
 
-    // ARToolKit's projection matrix accounts for real lens distortion, which a
-    // generic PerspectiveCamera cannot.
     const camera = new PerspectiveCamera(60, FRAME_WIDTH / FRAME_HEIGHT, 0.1, 10000);
     camera.projectionMatrix.fromArray(getCameraProjectionMatrix(state));
     camera.matrixAutoUpdate = false;
@@ -229,33 +271,28 @@ function createCube(): Mesh {
     );
 
     cube.matrixAutoUpdate = false;
-    // Three.js culls against a frustum derived from the default camera matrix,
-    // which does not match ARToolKit's — without this the cube can vanish.
     cube.frustumCulled = false;
     cube.visible = false;
     return cube;
 }
 
+function showMarker(cube: Mesh, marker: MarkerPose | undefined): void {
+    cube.visible = marker !== undefined;
+    if (!marker) return;
+
+    cube.matrix.fromArray(marker.matrixGL);
+    cube.matrixWorldNeedsUpdate = true;
+}
+
 /**
- * Demonstrates `configureDetector` with two groups of controls, chosen
- * deliberately rather than exposing every option:
- *
- * - Threshold mode/value: the option most likely to matter in practice —
- *   detection reliability under real lighting lives or dies on this.
- * - Near/far plane: the one option whose correctness this repo's test suite
- *   cannot verify, since every test runs against a mocked core.
- *   `configureDetector` recomputes ARToolKit's cached projection matrix, but
- *   Three.js keeps its own copy — `camera.projectionMatrix` has to be
- *   re-read from `getCameraProjectionMatrix` afterwards, same as any real
- *   consumer would need to. Set a small `farPlane` and Apply: the cube
- *   should clip out of view, which is the real-engine proof no mocked test
- *   can give.
- *
- * detectionMode/matrixCodeType are omitted: nothing here can detect a
- * barcode marker until #9 lands. labelingMode and the remaining options are
- * omitted to keep this panel to what is worth demonstrating.
+ * Detection-mode switcher and a per-frame detection log. The log, not a
+ * second 3D object, is the verification signal here: reading two labelled
+ * entries proves both marker families were found, with no risk of misreading
+ * overlapping or mis-posed geometry. It runs in every mode, not just the
+ * combined ones, so the same line visibly grows from one entry to two the
+ * moment the mode changes.
  */
-function createControlPanel(state: ARToolKitState, camera: Camera): void {
+function createControlPanel(state: ARToolKitState): { updateLog: (detected: MarkerPose[]) => void } {
     const panel = document.createElement('div');
     panel.style.position = 'fixed';
     panel.style.top = '12px';
@@ -271,87 +308,41 @@ function createControlPanel(state: ARToolKitState, camera: Camera): void {
     panel.style.gap = '8px';
     document.body.appendChild(panel);
 
-    addThresholdControls(panel, state);
-    addProjectionPlaneControls(panel, state, camera);
-}
-
-function addThresholdControls(panel: HTMLElement, state: ARToolKitState): void {
     const modeSelect = document.createElement('select');
-    for (const mode of THRESHOLD_MODES) {
+    for (const mode of DETECTION_MODES) {
         const option = document.createElement('option');
         option.value = mode;
         option.textContent = mode;
         modeSelect.appendChild(option);
     }
-    modeSelect.value = 'manual';
+    modeSelect.value = 'matrix';
     modeSelect.onchange = () => {
-        configureDetector(state, { thresholdMode: modeSelect.value as ThresholdMode });
+        applyDetectionMode(state, modeSelect.value as DetectionMode);
     };
 
-    const thresholdInput = document.createElement('input');
-    thresholdInput.type = 'range';
-    thresholdInput.min = '0';
-    thresholdInput.max = '255';
-    thresholdInput.value = String(DEFAULT_THRESHOLD);
-    // Only visible in 'manual' mode — the value is still stored otherwise,
-    // ARToolKit just does not consult it.
-    thresholdInput.oninput = () => {
-        configureDetector(state, { threshold: Number(thresholdInput.value) });
+    const label = document.createElement('label');
+    label.textContent = 'detection mode';
+    label.appendChild(modeSelect);
+    panel.appendChild(label);
+
+    const log = document.createElement('div');
+    panel.appendChild(log);
+
+    return {
+        updateLog: (detected) => {
+            log.textContent = formatDetected(detected);
+        },
     };
-
-    panel.appendChild(labelled('threshold mode', modeSelect));
-    panel.appendChild(labelled('threshold (manual mode only)', thresholdInput));
 }
 
-function addProjectionPlaneControls(
-    panel: HTMLElement,
-    state: ARToolKitState,
-    camera: Camera
-): void {
-    const nearInput = document.createElement('input');
-    nearInput.type = 'number';
-    nearInput.step = 'any';
-    nearInput.value = String(DEFAULT_NEAR_PLANE);
-
-    const farInput = document.createElement('input');
-    farInput.type = 'number';
-    farInput.step = 'any';
-    farInput.value = String(DEFAULT_FAR_PLANE);
-
-    const applyButton = document.createElement('button');
-    applyButton.textContent = 'Apply near/far plane';
-    applyButton.onclick = () => {
-        configureDetector(state, {
-            nearPlane: Number(nearInput.value),
-            farPlane: Number(farInput.value),
-        });
-
-        // configureDetector already refreshed ARToolKit's cached matrix;
-        // Three.js holds its own copy, so it needs re-reading too.
-        camera.projectionMatrix.fromArray(getCameraProjectionMatrix(state));
-    };
-
-    panel.appendChild(labelled('near plane', nearInput));
-    panel.appendChild(labelled('far plane', farInput));
-    panel.appendChild(applyButton);
-}
-
-function labelled(text: string, control: HTMLElement): HTMLElement {
-    const wrapper = document.createElement('label');
-    wrapper.style.display = 'flex';
-    wrapper.style.flexDirection = 'column';
-    wrapper.style.gap = '2px';
-    wrapper.textContent = text;
-    wrapper.appendChild(control);
-    return wrapper;
-}
-
-function showMarker(cube: Mesh, marker: MarkerPose | undefined): void {
-    cube.visible = marker !== undefined;
-    if (!marker) return;
-
-    cube.matrix.fromArray(marker.matrixGL);
-    cube.matrixWorldNeedsUpdate = true;
+function formatDetected(detected: MarkerPose[]): string {
+    if (detected.length === 0) return 'detected: none';
+    return (
+        'detected: ' +
+        detected
+            .map((marker) => `id ${marker.id} (${marker.type}, cf ${marker.confidence.toFixed(2)})`)
+            .join(', ')
+    );
 }
 
 function overlay(element: HTMLElement, zIndex: number): void {

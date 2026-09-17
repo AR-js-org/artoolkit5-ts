@@ -8,7 +8,18 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    // Vite's own ambient declarations, which include `declare module '*?url'`.
+    // The examples import the WASM binary through that suffix and would
+    // otherwise need a suppression at each import site.
+    //
+    // Naming anything here switches off the automatic inclusion of every other
+    // `@types/*` package. `node` is deliberately not listed: nothing under
+    // `src`, `test` or `examples` uses a Node global, and `vite.config.ts`,
+    // which uses `node:path` and `__dirname`, gets them transitively from
+    // vite's own `/// <reference types="node" />`. Add it here if that ever
+    // stops being true.
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }
