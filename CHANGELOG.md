@@ -7,12 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 0.1.0
+
+Three changes need action. Each is described in full further down; this is the
+short list for anyone upgrading.
+
+1. **`state.markers` is gone**, replaced by `state.patternMarkers` and
+   `state.barcodeMarkers`. Read the one matching the family you registered.
+2. **`FrameResult.lost` now holds objects, not numbers** — `LostMarker`
+   (`{ id, type }`) rather than a bare ID. This is the one to look for: it does
+   not throw, so `lost.forEach((id) => hide(id))` keeps running and silently
+   stops matching anything. Use `lost.forEach(({ id }) => hide(id))`, and note
+   that `id` alone is no longer unique across families.
+3. **Several `configureDetector` option values were respelled** — see the table
+   under Changed. TypeScript catches these; plain JavaScript gets a thrown
+   `ARToolKitError` naming the option and listing the valid values.
+
 ### Added
 
 - `configureDetector(state, opts)` — detector tuning: `detectionMode`, `matrixCodeType`,
   `threshold`, `thresholdMode`, `labelingMode`, `imageProcMode`, `patternRatio`,
-  `nearPlane`, `farPlane`. Applies only the keys present, so a later call can
-  adjust a single setting mid-session.
+  `nearPlane`, `farPlane`, and `minConfidence` (described below). Applies only the
+  keys present, so a later call can adjust a single setting mid-session.
 - `@ar-js-org/artoolkit5-constants` as a direct dependency (`^0.3.0`). All ARToolKit5
   integers used internally come from it — `src/config.ts` is the only module in
   the codebase that imports one.
@@ -80,9 +96,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SCREAMING_SNAKE for matrix algorithm suffixes. Matching the ecosystem was judged
   worth more than tidiness in isolation. ([#34](https://github.com/AR-js-org/artoolkit5-ts/issues/34))
 
+- **`FrameResult.lost` is now `LostMarker[]` rather than `number[]`.** It carries
+  `type` alongside `id` because the two families have independent ID spaces, so an
+  ID on its own can no longer say which marker disappeared. Unlike the respellings
+  above this one is silent in plain JavaScript — the array is still iterable and
+  still the right length, the elements are simply objects now.
+
 - Depends on `@ar-js-org/artoolkit5-wasm@^0.3.0`, up from `^0.1.3`. `0.3.0` is required,
   not merely preferred: it is the first release to bind `idPatt`/`idMatrix`, without
   which the combined detection modes silently report nothing or the wrong marker.
+
+### Removed
+
+- **`ARToolKitState.markers`**, replaced by the `patternMarkers` and `barcodeMarkers`
+  registries described under Added. There is no combined view: the two families have
+  independent ID spaces, so merging them back into one map is exactly the collision
+  the split exists to prevent.
 
 ### Notes
 
