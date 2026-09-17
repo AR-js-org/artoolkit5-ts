@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-17
+
 ### Upgrading from 0.1.0
 
 Three changes need action. Each is described in full further down; this is the
@@ -183,5 +185,6 @@ Pattern markers only. Barcode support is planned; NFT is out of scope for this
 project. Worker compatibility is untested — nothing in `src/` touches the DOM,
 which is necessary but not proof.
 
-[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AR-js-org/artoolkit5-ts/releases/tag/v0.1.0
