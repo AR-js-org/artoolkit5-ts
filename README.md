@@ -291,11 +291,13 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## 🗺️ Roadmap
 
-Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md); work is tracked in [issues](https://github.com/AR-js-org/artoolkit5-ts/issues).
+Detailed design lives in [`docs/DESIGN-v0.1.md`](docs/DESIGN-v0.1.md) and, for the detector and barcode work, [`docs/DESIGN-detector-and-barcode.md`](docs/DESIGN-detector-and-barcode.md); work is tracked in [issues](https://github.com/AR-js-org/artoolkit5-ts/issues).
 
 **v0.1** (done) — lifecycle, packaging, marker-lost reporting from `processFrame`, a test suite and CI.
 
-**Next** — `configureDetector` (done), barcode markers including combined pattern+barcode detection (done, verified against a real camera), a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
+**v0.2** (done) — `configureDetector`, barcode markers, independent ID registries for the two families, combined pattern+barcode detection verified against a real camera, and per-family match confidence.
+
+**Next** — a verified Worker example, an `ImageBitmap` conversion helper, and multi-marker sets.
 
 **Out of scope** — NFT tracking. This project and `artoolkit5-wasm` cover pattern and barcode markers; NFT belongs to other projects in the ecosystem.
 
