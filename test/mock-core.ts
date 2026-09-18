@@ -121,6 +121,18 @@ export function createMockState(options: MockCoreOptions = {}): {
         return visibleIds[Math.max(index, 0)] ?? [];
     };
 
+    // Deterministic corners per candidate square, so a test can assert the
+    // exact values the engine reported reached the pose rather than that
+    // *some* corners did. The real engine reports these in camera image
+    // coordinates with the origin at top-left; the shape, not the geometry,
+    // is what matters here.
+    const vertexFor = (index: number): [number, number][] => [
+        [index * 100 + 10, index * 100 + 20],
+        [index * 100 + 30, index * 100 + 20],
+        [index * 100 + 30, index * 100 + 40],
+        [index * 100 + 10, index * 100 + 40],
+    ];
+
     const state: ARToolKitState = {
         mod: {
             HEAPF64: heap,
@@ -148,7 +160,14 @@ export function createMockState(options: MockCoreOptions = {}): {
             // rather than passing because the mock happened to populate it.
             getMarkerInfo: (index: number) => {
                 const id = currentIds()[index];
-                return { id: -1, idPatt: id, idMatrix: id, cfPatt, cfMatrix };
+                return {
+                    id: -1,
+                    idPatt: id,
+                    idMatrix: id,
+                    cfPatt,
+                    cfMatrix,
+                    vertex: vertexFor(index),
+                };
             },
             getTransMatSquare: (index: number) => {
                 calls.transMat.push(index);
