@@ -77,6 +77,8 @@ const DEFAULT_FAR_PLANE = 1000;
 
 const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto_median', 'auto_otsu', 'auto_bracketing'];
 
+const OUTLINE_COLOUR = '#00ff88';
+
 async function main(): Promise<void> {
     const stage = getStage();
     const video = await startCamera(stage);
@@ -100,6 +102,7 @@ async function main(): Promise<void> {
         trackMarker(state, markerId, MARKER_WIDTH);
 
         const scene = createScene(stage, state);
+        const drawOutline = createOutlineDrawer(stage);
         createControlPanel(state, scene.camera);
         const tracking = state;
 
@@ -114,6 +117,7 @@ async function main(): Promise<void> {
             }
 
             showMarker(scene.cube, detected[0]);
+            drawOutline(detected[0]);
             scene.renderer.render(scene.scene, scene.camera);
         });
     } catch (error) {
@@ -188,6 +192,52 @@ function createFrameGrabber(video: HTMLVideoElement): () => Uint8ClampedArray | 
         if (video.readyState !== video.HAVE_ENOUGH_DATA) return null;
         context.drawImage(video, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
         return context.getImageData(0, 0, FRAME_WIDTH, FRAME_HEIGHT).data;
+    };
+}
+
+/**
+ * Returns a function that traces the detected square's corners onto a canvas
+ * above the video.
+ *
+ * `vertex` arrives in camera image coordinates — the same space as the pixels
+ * handed to `processFrame`, origin top-left — so drawing it needs no pose and
+ * no projection matrix. That is the point of the field: an outline, a
+ * hit-test or an occlusion mask costs nothing beyond the detection itself.
+ */
+function createOutlineDrawer(stage: HTMLElement): (marker: MarkerPose | undefined) => void {
+    const canvas = document.createElement('canvas');
+    canvas.width = FRAME_WIDTH;
+    canvas.height = FRAME_HEIGHT;
+    overlay(canvas, 2);
+    stage.appendChild(canvas);
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('Could not create a 2D context for the marker outline');
+    }
+
+    return (marker) => {
+        context.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+        if (!marker) return;
+
+        const [[startX, startY], ...rest] = marker.vertex;
+
+        context.beginPath();
+        context.moveTo(startX, startY);
+        for (const [x, y] of rest) {
+            context.lineTo(x, y);
+        }
+        context.closePath();
+        context.strokeStyle = OUTLINE_COLOUR;
+        context.lineWidth = 3;
+        context.stroke();
+
+        // Corner 0 is marked because the ordering is rotation-dependent and is
+        // the part a consumer has to get right: see MarkerPose.vertex.
+        context.beginPath();
+        context.arc(startX, startY, 5, 0, Math.PI * 2);
+        context.fillStyle = OUTLINE_COLOUR;
+        context.fill();
     };
 }
 
