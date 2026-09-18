@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `MarkerInfo` gained `vertex` as a **required** field. Nothing in the
+  library constructs a `MarkerInfo` — they come from the WASM binding, which
+  already supplied corners — but a hand-written `ARToolKitCore` double in a
+  consumer's tests now fails to typecheck until it supplies four points.
+
 - Lockfile moved onto `@ar-js-org/artoolkit5-constants` 0.3.1, whose published
   metadata now correctly declares MIT rather than GPL-3.0. No code changed
   upstream; only the declaration was wrong. Closes #53.

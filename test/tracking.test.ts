@@ -202,8 +202,11 @@ describe('vertex', () => {
 
         const first = processFrame(state, FRAME).detected[0].vertex;
         const firstCopy = first.map((point) => [...point]);
-        processFrame(state, FRAME);
+        const second = processFrame(state, FRAME).detected[0].vertex;
 
+        // Identity, not just contents: an array reused across frames holding
+        // the same values would satisfy the second assertion on its own.
+        expect(second).not.toBe(first);
         expect(first).toEqual(firstCopy);
     });
 });
@@ -319,6 +322,7 @@ describe('confidence', () => {
         configureDetector(state, { minConfidence: { pattern: 0.9 } });
         state.core.getMarkerInfo = () => ({
             id: -1, idPatt: MARKER_ID, idMatrix: -1, cfPatt: 0.2, cfMatrix: -1,
+            vertex: [[0, 0], [1, 0], [1, 1], [0, 1]],
         });
 
         const { detected, lost } = processFrame(state, FRAME);
