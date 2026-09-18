@@ -141,6 +141,73 @@ describe('independent ID spaces', () => {
     });
 });
 
+describe('vertex', () => {
+    it('reports the corners the engine found for the square', () => {
+        const { state } = createMockState({ visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+
+        // The mock's corners for candidate 0, verbatim. Asserting the exact
+        // values proves they were carried through rather than reconstructed.
+        expect(detected[0].vertex).toEqual([
+            [10, 20],
+            [30, 20],
+            [30, 40],
+            [10, 40],
+        ]);
+    });
+
+    it('gives both families the corners of the square they matched', () => {
+        // One square can match a pattern and a barcode in the same frame. Both
+        // poses describe that same square, so both carry the same corners.
+        const { state } = createMockState({ visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+
+        expect(detected).toHaveLength(2);
+        expect(detected[0].type).toBe('pattern');
+        expect(detected[1].type).toBe('barcode');
+        // Asserting the concrete value as well as the equality: comparing the
+        // two poses alone would pass while both were undefined.
+        expect(detected[0].vertex).toEqual([
+            [10, 20],
+            [30, 20],
+            [30, 40],
+            [10, 40],
+        ]);
+        expect(detected[1].vertex).toEqual(detected[0].vertex);
+    });
+
+    it('gives each visible square its own corners', () => {
+        const SECOND_ID = MARKER_ID + 1;
+        const { state } = createMockState({ visibleIds: [[MARKER_ID, SECOND_ID]] });
+        trackMarker(state, MARKER_ID);
+        trackMarker(state, SECOND_ID);
+
+        const { detected } = processFrame(state, FRAME);
+
+        expect(detected).toHaveLength(2);
+        expect(detected[0].vertex).not.toEqual(detected[1].vertex);
+    });
+
+    it('is freshly allocated per frame, not a reused buffer', () => {
+        // Unlike matrix and matrixGL, which are reused across frames, the
+        // corners come back as a new array each call. Consumers may retain
+        // them, and this pins that guarantee.
+        const { state } = createMockState({ visibleIds: [[MARKER_ID], [MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+
+        const first = processFrame(state, FRAME).detected[0].vertex;
+        const firstCopy = first.map((point) => [...point]);
+        processFrame(state, FRAME);
+
+        expect(first).toEqual(firstCopy);
+    });
+});
+
 describe('confidence', () => {
     it('reports the confidence of the match that produced each pose', () => {
         const { state } = createMockState({

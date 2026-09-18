@@ -183,13 +183,15 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
         // pattern and a barcode in the same frame.
         const pattern = matchFamily(
             state.patternMarkers, state, candidate,
-            info.idPatt, info.cfPatt, 'pattern', state.minConfidence.pattern
+            info.idPatt, info.cfPatt, 'pattern', state.minConfidence.pattern,
+            info.vertex
         );
         if (pattern) detected.push(pattern);
 
         const barcode = matchFamily(
             state.barcodeMarkers, state, candidate,
-            info.idMatrix, info.cfMatrix, 'barcode', state.minConfidence.barcode
+            info.idMatrix, info.cfMatrix, 'barcode', state.minConfidence.barcode,
+            info.vertex
         );
         if (barcode) detected.push(barcode);
     }
@@ -211,7 +213,8 @@ function matchFamily(
     id: number,
     confidence: number,
     type: MarkerType,
-    minConfidence: number
+    minConfidence: number,
+    vertex: [number, number][]
 ): MarkerPose | undefined {
     if (id === UNRECOGNISED_MARKER_ID) return undefined;
 
@@ -232,6 +235,7 @@ function matchFamily(
         confidence,
         matrix: tracked.matrix,
         matrixGL: tracked.matrixGL,
+        vertex,
     };
 }
 

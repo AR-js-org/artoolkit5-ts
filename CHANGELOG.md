@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `MarkerPose.vertex` — the four corners of the detected square, in camera
+  image coordinates with the origin at top-left. Closes #54.
+
+  The WASM binding already returned these; only the TypeScript types and
+  `processFrame` did not carry them through, so no rebuild of
+  `@ar-js-org/artoolkit5-wasm` was needed. `MarkerInfo.vertex` is declared
+  for the same reason.
+
+  Unlike `matrix` and `matrixGL`, which are views onto buffers reused every
+  frame, `vertex` is freshly allocated per frame and is safe to retain
+  without copying. Corner order depends on the marker's rotation —
+  `vertex[(4 - dir) % 4]` is the marker's top-left corner, the rest clockwise
+  from there — which matters for anything orientation-sensitive and not at all
+  for outlining the square.
+
+  Corners let a consumer draw a marker outline, hit-test or build an occlusion
+  mask without needing the camera projection matrix at all.
+
+### Changed
+
+- Lockfile moved onto `@ar-js-org/artoolkit5-constants` 0.3.1, whose published
+  metadata now correctly declares MIT rather than GPL-3.0. No code changed
+  upstream; only the declaration was wrong. Closes #53.
+
+
 ## [0.2.0] - 2026-09-17
 
 ### Upgrading from 0.1.0
