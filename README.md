@@ -270,6 +270,10 @@ things differ from the pose matrices:
   the marker's own top-left corner, the rest clockwise from there. Outlining
   the square can ignore this; anything orientation-sensitive cannot.
 
+The webcam example draws exactly this outline, marking corner 0 so the
+ordering is visible: see `createOutlineDrawer` in
+[`examples/webcam/main.ts`](examples/webcam/main.ts).
+
 `confidence` is read from the field belonging to the marker's family — `cfPatt` or `cfMatrix` — so it is comparable within a family but not across them. See [`minConfidence`](#minconfidence--rejecting-weak-matches) for measured ranges.
 
 `type` says which family a detection came from. The engine reports the two through separate fields — `idPatt` for pattern markers, `idMatrix` for barcode markers — and each is matched only against its own registry, so `type` follows from which registry answered rather than from any value the engine supplies. This is also why the families have independent ID spaces: the same integer in each is two unrelated markers.
