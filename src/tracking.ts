@@ -129,9 +129,11 @@ function createTrackedMarker(id: number, markerWidth: number): TrackedMarkerStat
  * so a consumer emitting found/updated/lost events does not have to diff
  * successive results to recover information tracking already had.
  *
- * Called once per animation frame, so it allocates no typed arrays: every pose
- * is written into buffers owned by the marker's tracking state. Those buffers
- * are reused next frame — copy them if you need to retain values.
+ * Called once per animation frame, so it allocates no typed arrays: `matrix`
+ * and `matrixGL` are written into buffers owned by the marker's tracking
+ * state, and those buffers are reused next frame — copy them if you need to
+ * retain values. `vertex` is the exception; it is a fresh array every frame
+ * and can be retained as it is.
  *
  * @param videoFrame RGBA pixels matching the width and height the state was
  *   created with.
