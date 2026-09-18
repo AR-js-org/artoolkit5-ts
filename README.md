@@ -255,8 +255,20 @@ interface MarkerPose {
   confidence: number;      // 0–1, from this marker's own family
   matrix: Float64Array;    // 3x4, row-major, as ARToolKit produces it
   matrixGL: Float32Array;  // 4x4, column-major, right-handed, WebGL-ready
+  vertex: [number, number][];  // the square's 4 corners, camera image coords
 }
 ```
+
+`vertex` gives the four corners of the detected square in camera image
+coordinates, origin at top-left — enough to outline a marker, hit-test it or
+build an occlusion mask without touching the camera projection matrix. Two
+things differ from the pose matrices:
+
+- **It is freshly allocated per frame**, not a view onto a reused buffer, so it is
+  safe to retain without copying. `matrix` and `matrixGL` are the opposite.
+- **Corner order follows the marker's rotation.** `vertex[(4 - dir) % 4]` is
+  the marker's own top-left corner, the rest clockwise from there. Outlining
+  the square can ignore this; anything orientation-sensitive cannot.
 
 `confidence` is read from the field belonging to the marker's family — `cfPatt` or `cfMatrix` — so it is comparable within a family but not across them. See [`minConfidence`](#minconfidence--rejecting-weak-matches) for measured ranges.
 

@@ -92,6 +92,20 @@ export interface MarkerPose {
      * camera noise and calibration in the millimetre range.
      */
     matrixGL: Float32Array;
+    /**
+     * The four corners of the detected square, in camera image coordinates
+     * with the origin at top-left.
+     *
+     * Unlike `matrix` and `matrixGL`, this is **not** a view onto a reused
+     * buffer — the engine builds a fresh array each frame, so it is safe to
+     * retain without copying.
+     *
+     * Corner order depends on the marker's rotation: `vertex[(4 - dir) % 4]`
+     * is the top-left corner of the marker itself, with the rest proceeding
+     * clockwise from there. Anything that merely outlines the square can
+     * ignore that; anything orientation-sensitive cannot.
+     */
+    vertex: [number, number][];
 }
 
 /**
@@ -183,6 +197,12 @@ export interface MarkerInfo {
     cfPatt: number;
     /** Matrix-code confidence, 0.0-1.0, or -1.0 when there was no match. */
     cfMatrix: number;
+    /**
+     * 2D positions of the square's four corners, in camera image coordinates
+     * with the origin at top-left. Populated in every detection mode, unlike
+     * the id and confidence fields above.
+     */
+    vertex: [number, number][];
 }
 
 /**
