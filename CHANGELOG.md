@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-19
+
 ### Added
 
 - `MarkerPose.vertex` — the four corners of the detected square, in camera
@@ -37,7 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lockfile moved onto `@ar-js-org/artoolkit5-constants` 0.3.1, whose published
   metadata now correctly declares MIT rather than GPL-3.0. No code changed
   upstream; only the declaration was wrong. Closes #53.
-
 
 ## [0.2.0] - 2026-09-17
 
@@ -217,6 +218,7 @@ Pattern markers only. Barcode support is planned; NFT is out of scope for this
 project. Worker compatibility is untested — nothing in `src/` touches the DOM,
 which is necessary but not proof.
 
-[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AR-js-org/artoolkit5-ts/releases/tag/v0.1.0
