@@ -117,7 +117,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "$(gh repo view "${{ github.repository }}" --json isPrivate --jq .isPrivate)" = "true" ]; then
-            echo "::error::${{ github.repository }} is private, and npm cannot generate provenance from a private repository. Make it public, or remove --provenance from the publish step."
+            echo "::error::${{ github.repository }} is private, and npm cannot generate provenance from a private repository. Make it public; provenance is no longer optional here, since trusted publishing attests it automatically and there is no flag to drop."
             exit 1
           fi
           echo "Repository is public; provenance can be generated."
@@ -220,8 +220,9 @@ jobs:
     permissions:
       # Pushing the version commit and tag, and creating the Release.
       contents: write
-      # npm provenance: mints the OIDC token letting npm attest which workflow
-      # run and commit produced the tarball.
+      # Mints the OIDC token npm authenticates with. This is now how the
+      # publish identifies itself at all, not only how provenance is attested:
+      # there is no npm token in this workflow any more.
       id-token: write
 
     env:
@@ -235,11 +236,25 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
+      # 24.x rather than the 22.x `prepare` uses, and not interchangeable:
+      # trusted publishing needs npm 11.5.1 or newer, and Node 22.x still ships
+      # npm 10.9.x. Node 24.x ships 11.19.x, so the requirement is met by the
+      # runtime rather than by a global npm install on top of it. Nothing is
+      # built here — this job only publishes a tree `prepare` already built —
+      # so the two jobs do not need to agree on a Node version.
+      #
+      # `registry-url` is deliberately not set, unlike in npm's own documented
+      # example. It makes setup-node write an .npmrc line
+      # reading `_authToken=${NODE_AUTH_TOKEN}`; with no token in the environment
+      # that expands to empty, npm decides authentication is already configured
+      # and never performs the OIDC exchange, and the publish fails with 403 or
+      # ENEEDAUTH. registry.npmjs.org is npm's default anyway, so dropping it
+      # changes nothing else. See actions/setup-node#1551 and
+      # npm/documentation#1960 before adding it back.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22.x'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '24.x'
 
       # No `npm ci` here on purpose: publishing needs the manifest and dist/,
       # not the dependency tree, and there are no publish lifecycle scripts to
@@ -326,12 +341,20 @@ jobs:
             --notes-file release-notes.md \
             --verify-tag
 
+      # Authenticated by trusted publishing (OIDC), configured against this
+      # repository and this workflow filename on npmjs.com. There is no token:
+      # the runner exchanges a short-lived OIDC token for publish rights, so
+      # there is nothing to expire, rotate or leak, and nothing for the
+      # package's 2FA requirement to reject. That requirement is what broke the
+      # 0.2.0 and 0.2.1 publishes, both of which had to be completed by hand.
+      #
+      # --provenance is deliberately absent: publishing this way attests
+      # provenance automatically, and passing the flag is redundant.
+      #
       # --access public is required for the first publish of a scoped package;
       # npm otherwise defaults it to restricted and fails on a free account.
       - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Summarise
         run: |

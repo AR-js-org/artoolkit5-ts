@@ -107,24 +107,63 @@ git checkout dev && git reset --hard origin/main && git push --force-with-lease 
 | Version not on npm | that version was already published — npm never allows a replacement |
 | Typecheck, test, build | any of the three fails |
 
+## Publishing
+
+The workflow publishes through npm **trusted publishing**, which authenticates
+over OIDC instead of with a token. The runner exchanges a short-lived OIDC
+token for publish rights, scoped to this repository and this workflow filename
+as registered on npmjs.com. There is no `NPM_TOKEN`, nothing to expire or
+rotate, and nothing for the package's 2FA requirement to reject — that
+requirement is what broke the 0.2.0 and 0.2.1 publishes.
+
+Three consequences worth knowing:
+
+- **Provenance is automatic.** `--provenance` is not passed, and should not be:
+  publishing this way attests provenance on its own.
+- **The `release` job runs Node 24.x while `prepare` runs 22.x.** That is not
+  an oversight. Trusted publishing needs npm 11.5.1 or newer, and Node 22.x
+  still ships npm 10.9.x. Nothing is built in `release` — it publishes a tree
+  `prepare` already built and handed over — so the two jobs do not need to
+  agree on a Node version.
+- **The `release` job must not set `registry-url` on `actions/setup-node`.**
+  It makes setup-node write an `.npmrc` line reading
+  `_authToken=${NODE_AUTH_TOKEN}`. With no token in the environment that
+  expands to empty, npm concludes authentication is already configured and
+  never performs the OIDC exchange, failing with 403 or ENEEDAUTH.
+  registry.npmjs.org is npm's default, so omitting it changes nothing else.
+  npm's own example workflow still includes it, so this is easy to reintroduce
+  by copying the docs — see actions/setup-node#1551 and npm/documentation#1960.
+
+If the registered publisher ever needs changing, it lives on the package's
+settings page on npmjs.com: organisation `AR-js-org`, repository
+`artoolkit5-ts`, workflow filename `release.yml` — the filename alone, not the
+path. npm does not validate that configuration when it is saved, so a wrong
+value is accepted silently and only surfaces as a failed publish.
+
+
 ## Known failure modes
 
 ### `403 Two-factor authentication is required ... but an automation token was specified`
 
-The publish step fails while everything before it succeeds. This is a setting
-on the npm package rather than anything in this repository: publishing access
-is set to require 2FA, which rejects the automation token the workflow
-authenticates with.
+**This should no longer happen.** The workflow no longer authenticates with a
+token at all — see [Publishing](#publishing) above. The section is kept because
+the failure is worth recognising if it returns, and because the recovery below
+is still the fallback until trusted publishing has carried a release end to
+end.
 
-**It is a regression, not a permanent condition.** 0.1.0 published from CI
+The publish step failed while everything before it succeeded. The cause was a
+setting on the npm package rather than anything in this repository: publishing
+access required 2FA, which rejects the automation token the workflow used to
+authenticate with.
+
+It was a regression rather than a permanent condition. 0.1.0 published from CI
 without trouble on 2026-08-16 and carries a provenance attestation. Both 0.2.0
 and 0.2.1 then failed at this step — 0.2.0 has no attestation on npm, which is
-the fingerprint of a hand publish. So something changed between August and
-September, and whatever it was can be changed back.
+the fingerprint of a hand publish.
 
 The state it leaves behind is the awkward one the workflow's own comments warn
-about — the release commit, the tag and the GitHub Release have all been pushed,
-and only the package is missing.
+about — the release commit, the tag and the GitHub Release have all been
+pushed, and only the package is missing.
 
 **To recover the current release**, publish it by hand from the release commit.
 This needs your own npm credentials and a 2FA code, so it cannot be automated:
@@ -136,15 +175,6 @@ git checkout main && git pull && npm ci && npm run build && npm publish --access
 The package is identical to the one the workflow built, but it carries no
 provenance attestation — npm only generates those from a supported CI provider.
 This is why 0.2.0 has none while 0.1.0 does.
-
-**To stop it recurring**, check the package's publishing access on npmjs.com:
-*Two-factor authentication or automation tokens are required for publishing*
-allows the workflow through, *Two-factor authentication is required for
-publishing* does not. Worth checking whether the automation token itself is
-still valid at the same time, since an expired or rotated token is the other
-way this step regresses. Nothing in the workflow needs changing — it already
-requests provenance and produced it for 0.1.0, and will do so again as soon as
-the publish succeeds from CI.
 
 Re-running the workflow is not a route back. After a partial failure the
 release commit is already on `main`, so a re-run fails twice over: the tag now
