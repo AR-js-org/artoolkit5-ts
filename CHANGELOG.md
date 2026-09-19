@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Releases now publish to npm through trusted publishing (OIDC) rather than an
+  automation token. For consumers the visible effect is that the published
+  package carries a provenance attestation again, verifiable with
+  `npm view @ar-js-org/artoolkit5-ts@<version> dist.attestations`.
+
+  0.2.0 and 0.2.1 have no attestation. The package requires 2FA to publish,
+  which rejects automation tokens, so the workflow's publish step failed on
+  both and each was completed by hand — and npm only generates provenance from
+  a supported CI provider. 0.1.0, published from CI before that setting
+  changed, does have one.
+
+  Nothing in the library changed. The code published as 0.2.2 is the code
+  published as 0.2.1.
+
 ## [0.2.1] - 2026-09-19
 
 ### Added
