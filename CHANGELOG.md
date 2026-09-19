@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Documentation no longer states a corner-order formula that cannot be
+  applied. The 0.2.1 entry below, the README and the `MarkerPose.vertex`
+  JSDoc all gave `vertex[(4 - dir) % 4]` as the marker's top-left corner
+  without mentioning that `dir` is not exposed, making it unusable. The
+  formula is correct — it is what ARToolKit feeds its own pose solver — so the
+  text now says plainly that it is blocked until `dir` is carried through
+  (#62). The released 0.2.1 entry is left as written rather than rewritten
+  after publication.
+
 ### Changed
 
 - Releases now publish to npm through trusted publishing (OIDC) rather than an

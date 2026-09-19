@@ -266,9 +266,15 @@ things differ from the pose matrices:
 
 - **It is freshly allocated per frame**, not a view onto a reused buffer, so it is
   safe to retain without copying. `matrix` and `matrixGL` are the opposite.
-- **Corner order follows the marker's rotation.** `vertex[(4 - dir) % 4]` is
-  the marker's own top-left corner, the rest clockwise from there. Outlining
-  the square can ignore this; anything orientation-sensitive cannot.
+- **Corner order follows the marker's rotation, and cannot yet be resolved.**
+  `vertex[0]` is wherever the square tracer began, so which physical corner it
+  lands on changes as the marker turns. The rotation-invariant mapping is
+  `vertex[(4 - dir) % 4]` — the same one ARToolKit uses internally to feed its
+  pose solver — but `dir` is **not exposed yet** ([#62]), so that formula is
+  not something you can apply today. Outlining the square is unaffected;
+  anything orientation-sensitive is blocked until `dir` lands.
+
+[#62]: https://github.com/AR-js-org/artoolkit5-ts/issues/62
 
 The webcam example draws exactly this outline, marking corner 0 so the
 ordering is visible: see `createOutlineDrawer` in

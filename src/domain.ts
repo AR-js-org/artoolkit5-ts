@@ -100,10 +100,14 @@ export interface MarkerPose {
      * buffer — the engine builds a fresh array each frame, so it is safe to
      * retain without copying.
      *
-     * Corner order depends on the marker's rotation: `vertex[(4 - dir) % 4]`
-     * is the top-left corner of the marker itself, with the rest proceeding
-     * clockwise from there. Anything that merely outlines the square can
-     * ignore that; anything orientation-sensitive cannot.
+     * Corner order depends on the marker's rotation, and that rotation is not
+     * exposed yet. `vertex[0]` is wherever the square tracer began, so the
+     * physical corner it lands on changes as the marker turns. Resolving it
+     * needs `vertex[(4 - dir) % 4]` — ARToolKit's own mapping, the one it
+     * feeds to its pose solver — but `dir` is not currently carried through
+     * from the binding, so that cannot be applied. Outlining the square is
+     * unaffected; anything orientation-sensitive is blocked on
+     * https://github.com/AR-js-org/artoolkit5-ts/issues/62.
      */
     vertex: [number, number][];
 }
