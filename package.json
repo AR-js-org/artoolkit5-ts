@@ -1,6 +1,6 @@
 {
   "name": "@ar-js-org/artoolkit5-ts",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": false,
   "type": "module",
   "description": "TypeScript marker tracking for the browser, built on a WebAssembly build of ARToolkit5 (WebARKitLib). Composable and tree-shakeable: state is plain data, operations are functions.",
