@@ -46,6 +46,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const REPO = 'https://github.com/AR-js-org/artoolkit5-ts';
 const CHANGELOG = 'CHANGELOG.md';
 
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const version = process.argv[2];
 if (!version) {
     console.error('Usage: node scripts/promote-changelog.mjs <version>');
@@ -65,7 +69,7 @@ if (!unreleasedHeading.test(text)) {
 // it twice for the same version succeeds and produces two headings for that
 // version, the second one empty. The realistic way in is promoting by hand and
 // then letting the release workflow promote again.
-if (new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`, 'm').test(text)) {
+if (new RegExp(`^## \\[${escapeRegExp(version)}\\]`, 'm').test(text)) {
     console.error(
         `${CHANGELOG} already has a "## [${version}]" section. ` +
         'Promoting again would add a second, empty one.\n' +
