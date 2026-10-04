@@ -134,11 +134,19 @@ Three consequences worth knowing:
   npm's own example workflow still includes it, so this is easy to reintroduce
   by copying the docs — see actions/setup-node#1551 and npm/documentation#1960.
 
-If the registered publisher ever needs changing, it lives on the package's
-settings page on npmjs.com: organisation `AR-js-org`, repository
-`artoolkit5-ts`, workflow filename `release.yml` — the filename alone, not the
-path. npm does not validate that configuration when it is saved, so a wrong
-value is accepted silently and only surfaces as a failed publish.
+Registered publishers live on the package's settings page on npmjs.com:
+organisation `AR-js-org`, repository `artoolkit5-ts`, and the **workflow
+filename alone**, not the path. npm does not validate that configuration when it
+is saved, so a wrong value is accepted silently and only surfaces as a failed
+publish.
+
+**Authorisation is per workflow filename**, so each workflow that publishes needs
+its own entry — a package may have up to ten:
+
+| Entry | Used by |
+| --- | --- |
+| `release.yml` | the normal release |
+| `publish-tag.yml` | the recovery publish, see [Known failure modes](#known-failure-modes) |
 
 
 ## Known failure modes
@@ -165,22 +173,42 @@ The state it leaves behind is the awkward one the workflow's own comments warn
 about — the release commit, the tag and the GitHub Release have all been
 pushed, and only the package is missing.
 
-**To recover the current release**, publish it by hand from the release commit.
-This needs your own npm credentials and a 2FA code, so it cannot be automated:
+**To recover the current release**, dispatch the **Publish tag** workflow with
+the tag that was already pushed:
+
+```bash
+gh workflow run publish-tag.yml --repo AR-js-org/artoolkit5-ts -f tag=vX.Y.Z
+```
+
+It does only the publish — no commit, no tag, no changelog promotion — so it is
+safe against a tag that is already released. It checks the tag agrees with the
+manifest and that the version is not already on npm, then builds from the tagged
+tree and publishes. Crucially it publishes **with provenance**, which is the
+whole reason not to fall back to doing it by hand.
+
+> [!IMPORTANT]
+> This needs **its own trusted publisher** on npmjs.com. npm authorises a
+> publish per workflow filename, and the existing entry names `release.yml`, so
+> a second entry naming `publish-tag.yml` is required — a package may have up to
+> ten. Without it the publish is rejected however correct the workflow is.
+
+**The hand publish is the last resort, not the first.** It works, and it is what
+rescued 0.2.0 and 0.2.1:
 
 ```bash
 git checkout main && git pull && npm ci && npm run build && npm publish --access public
 ```
 
-The package is identical to the one the workflow built, but it carries no
-provenance attestation — npm only generates those from a supported CI provider.
-This is why 0.2.0 has none while 0.1.0 does.
+But the package it produces carries **no provenance attestation** — npm only
+generates those from a supported CI provider — which is why 0.2.0 and 0.2.1 have
+none while 0.1.0 and 0.2.2 do. Reach for it only if the workflow route is itself
+broken.
 
-Re-running the workflow is not a route back. After a partial failure the
+Re-running the release workflow is not a route back. After a partial failure the
 release commit is already on `main`, so a re-run fails twice over: the tag now
 exists, and the changelog has already been promoted. Recovering that way would
 mean deleting the tag, deleting the GitHub Release and reverting the release
-commit — far more surgery than publishing the built package by hand.
+commit — which is why the publish-only workflow exists instead.
 
 ### The push to `main` is rejected
 
@@ -203,7 +231,12 @@ It cannot cover anything in `release`, because that job does not run: the
 commit, the tag, the push to `main`, the GitHub Release and the npm publish are
 all unexercised. A dry run passing tells you the release is *prepared*
 correctly, not that it will *publish* correctly — which is exactly why the npm
-403 above has never been caught before a real release.
+403 above was never caught before a real release.
+
+That gap is now survivable rather than closed. The publish still cannot be
+rehearsed, but a failure at that step no longer needs improvising: the recovery
+publish is a workflow that was written in advance, which is the whole point of
+having it ready before the release that needs it.
 
 ## Open items
 

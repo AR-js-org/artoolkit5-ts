@@ -1,0 +1,132 @@
+name: Publish tag
+
+# The recovery path for a release that failed at its last step.
+#
+# `release.yml` orders the irreversible step last, so a failure there leaves the
+# version commit, the tag and the GitHub Release pushed with only the package
+# missing. That state cannot be recovered by re-running it: `prepare` aborts
+# because the tag already exists, and re-running the `release` job alone fails
+# because it rebuilds a release commit on top of a `main` that has since moved.
+# Both guards are correct and neither should be loosened — what was missing is a
+# third route that publishes an already-tagged, already-released version.
+#
+# This does only the publish. No commit, no tag, no changelog promotion, so it
+# is safe to run against a tag that is already released, and it keeps provenance
+# — which is the whole reason not to fall back to publishing by hand. 0.2.0 and
+# 0.2.1 were both finished by hand and neither carries an attestation.
+#
+# Requires its own trusted publisher on npmjs.com. npm authorises a publish per
+# workflow filename, and the existing entry names `release.yml`, so this file
+# needs a second entry (a package may have up to ten) naming `publish-tag.yml`.
+# Without it the publish is rejected no matter how correct the rest is.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish, e.g. v0.2.0'
+        required: true
+        type: string
+
+# Two publishes of the same package at once would race on the registry. Never
+# `cancel-in-progress`: cancelling a run that has already published leaves a
+# version on npm that npm will not let be replaced.
+concurrency:
+  group: publish-tag
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Reading the tagged tree.
+      contents: read
+      # Mints the OIDC token npm authenticates with. There is no npm token in
+      # this workflow, so without this the publish cannot authenticate at all.
+      id-token: write
+
+    env:
+      TAG: ${{ inputs.tag }}
+
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+
+      # 24.x, not the 22.x used for development: trusted publishing needs npm
+      # 11.5.1 or newer and Node 22.x still ships 10.9.x.
+      #
+      # `registry-url` is deliberately not set. It makes setup-node write an
+      # .npmrc line reading `_authToken=${NODE_AUTH_TOKEN}`; with no token in
+      # the environment that expands to empty, npm decides authentication is
+      # already configured and never performs the OIDC exchange, failing with
+      # 403 or ENEEDAUTH. registry.npmjs.org is npm's default anyway. See
+      # actions/setup-node#1551 and npm/documentation#1960 before adding it.
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The tag names what is being published, so a tag that disagrees with the
+      # manifest means the wrong tree is checked out. Refuse rather than publish
+      # something surprising under a version nobody asked for.
+      - name: Check the tag matches the manifest
+        run: |
+          EXPECTED="${TAG#v}"
+          ACTUAL="$(node -p "require('./package.json').version")"
+
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Tag $TAG implies version $EXPECTED but package.json says $ACTUAL. Wrong tag, or the tag does not point at a release commit."
+            exit 1
+          fi
+          echo "Tag $TAG matches package.json $ACTUAL."
+          echo "VERSION=$ACTUAL" >> "$GITHUB_ENV"
+
+      # npm refuses an existing version on its own, but it does so with an
+      # E403 that reads like an authentication failure. Checking first means a
+      # re-run of this workflow says plainly that there is nothing to do.
+      - name: Check the version is not already published
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already on npm. Nothing to publish — this workflow is for a version that was tagged but never published."
+            exit 1
+          fi
+          echo "$NAME@$VERSION is unpublished."
+
+      # Run against the tagged tree rather than trusted because it was checked
+      # during the failed release: this builds in a fresh environment, and the
+      # tarball published below is the one produced here.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Show what would be published
+        run: npm pack --dry-run
+
+      # Authenticated by trusted publishing (OIDC), exactly as in `release.yml`.
+      # `--provenance` is absent for the same reason: publishing this way attests
+      # provenance on its own.
+      - name: Publish to npm
+        run: npm publish --access public
+
+      - name: Summarise
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          {
+            echo "### Published $NAME@$VERSION from $TAG"
+            echo ""
+            echo "- npm: https://www.npmjs.com/package/$NAME/v/$VERSION"
+            echo ""
+            echo "Recovery publish: the tag and GitHub Release already existed."
+          } >> "$GITHUB_STEP_SUMMARY"
