@@ -42,22 +42,15 @@
  *
  *   node scripts/release-notes.mjs            # since the most recent tag
  *   node scripts/release-notes.mjs v0.1.0     # since a specific tag
+ *
+ * The grouping lives in `format-release-notes.mjs`. This file owns the git
+ * calls and the output; that one is a pure function and is where the tests
+ * point.
  */
 
 import { execFileSync } from 'node:child_process';
 
-/** Conventional Commit types, in the order they should appear. */
-const SECTIONS = [
-    { key: 'feat', heading: 'Features' },
-    { key: 'fix', heading: 'Fixes' },
-    { key: 'perf', heading: 'Performance' },
-    { key: 'refactor', heading: 'Refactoring' },
-    { key: 'docs', heading: 'Documentation' },
-    { key: 'test', heading: 'Tests' },
-    { key: 'ci', heading: 'CI' },
-    { key: 'build', heading: 'Build' },
-    { key: 'chore', heading: 'Chores' },
-];
+import { render, unrecognisedTypes } from './format-release-notes.mjs';
 
 // stderr is piped rather than inherited so a probing call that is expected to
 // fail — `describe` before the first tag exists — stays silent.
@@ -81,59 +74,6 @@ function commitsSince(tag) {
     return log ? log.split('\n') : [];
 }
 
-/**
- * Splits a Conventional Commit subject into its parts.
- *
- * Returns null for subjects that do not follow the convention, so they can be
- * surfaced rather than silently dropped.
- */
-function parse(subject) {
-    const match = /^(\w+)(?:\(([^)]+)\))?(!)?:\s*(.+)$/.exec(subject);
-    if (!match) return null;
-
-    const [, type, scope, breaking, description] = match;
-    return { type, scope, breaking: Boolean(breaking), description };
-}
-
-function render(commits) {
-    const parsed = commits.map((subject) => ({ subject, parts: parse(subject) }));
-
-    const lines = [];
-
-    // Breaking changes lead, regardless of type: they are what a reader most
-    // needs to see before upgrading.
-    const breaking = parsed.filter((c) => c.parts?.breaking);
-    if (breaking.length > 0) {
-        lines.push('### ⚠️ Breaking changes', '');
-        for (const { parts } of breaking) {
-            lines.push(`- ${parts.scope ? `**${parts.scope}:** ` : ''}${parts.description}`);
-        }
-        lines.push('');
-    }
-
-    for (const { key, heading } of SECTIONS) {
-        const matching = parsed.filter((c) => c.parts?.type === key && !c.parts.breaking);
-        if (matching.length === 0) continue;
-
-        lines.push(`### ${heading}`, '');
-        for (const { parts } of matching) {
-            lines.push(`- ${parts.scope ? `**${parts.scope}:** ` : ''}${parts.description}`);
-        }
-        lines.push('');
-    }
-
-    const unconventional = parsed.filter((c) => c.parts === null);
-    if (unconventional.length > 0) {
-        lines.push('### Other', '');
-        for (const { subject } of unconventional) {
-            lines.push(`- ${subject}`);
-        }
-        lines.push('');
-    }
-
-    return lines.join('\n').trim();
-}
-
 const tag = previousTag(process.argv[2]);
 const commits = commitsSince(tag);
 
@@ -147,4 +87,17 @@ console.error(
         ? `${commits.length} commits since ${tag}`
         : `${commits.length} commits (no previous tag — first release)`
 );
+
+// Warned about rather than left to be noticed: these still appear in the notes,
+// under Other, but the reason they are there is that SECTIONS does not list
+// them. On stderr, so it does not reach a file this is redirected into.
+const unrecognised = unrecognisedTypes(commits);
+if (unrecognised.length > 0) {
+    console.error(
+        `Warning: no section claims ${unrecognised.join(', ')}, so those commits are grouped ` +
+            'under "Other". Add the type to SECTIONS in format-release-notes.mjs, or keep the ' +
+            "list in AGENTS.md in step with it."
+    );
+}
+
 console.log(render(commits));
