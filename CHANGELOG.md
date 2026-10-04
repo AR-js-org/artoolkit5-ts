@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Both runtime dependencies move to **0.4.0**:
+  `@ar-js-org/artoolkit5-wasm` and `@ar-js-org/artoolkit5-constants`.
+  `artoolkit5-wasm` is external to this bundle, so consumers install it
+  themselves and the floor moves with this range.
+
+  Additive for anything here. The constants release only adds exports —
+  `VERSION` and `ARTOOLKIT_CONSTANTS_VERSION` — and removes no values, so
+  every constant `configureDetector` maps is unchanged. The wasm release
+  keeps `createARToolKit`, `loadCameraFromUrl` and `addMarkerFromUrl`, which
+  is everything `src/` imports, and still ships `dist/artoolkit5.wasm` for
+  the examples.
+
+  One removal did need handling: `artoolkit5-wasm` dropped its `./loader`
+  export. Nothing in `src/` imported it, so there is no behavioural change,
+  but `vite.config.ts` still listed it as external with a UMD global name.
+  Those two lines named an export that no longer resolves and have been
+  dropped.
+
+  Also worth noting for anyone who hit it: `artoolkit5-constants` removed
+  `prepublishOnly`, which used to run a native build on install and needed
+  `--ignore-scripts` to work around.
+
+  On licensing, the three packages are now consistent. All declare MIT, and
+  the resolved tree contains no GPL or LGPL declaration at all. The LGPLv3
+  obligation sits where it belongs and is stated in each `LICENSE` at the
+  right level of involvement: `artoolkit5-wasm` ships the WebARKitLib
+  WebAssembly binary and says redistributing it carries that licence's terms;
+  `artoolkit5-constants` ships only values extracted from LGPLv3 headers and
+  no WebARKitLib code; this package wraps the binary without bundling it, and
+  carries the same note. Raising the range also puts `artoolkit5-constants`
+  0.3.0 out of reach, which was the version that declared GPL-3.0 by mistake
+  before 0.3.1 corrected it.
+
 ### Fixed
 
 - Documentation no longer states a corner-order formula that cannot be
