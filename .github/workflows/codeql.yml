@@ -18,9 +18,26 @@ on:
   pull_request:
     branches: [main, dev]
   schedule:
-    # Weekly. Queries are added to CodeQL over time, so code that passed when
-    # it was written is not necessarily still passing; without a schedule a new
-    # query is only applied when something happens to touch the repository.
+    # Weekly, because queries are added to CodeQL over time: code that passed
+    # when it was written is not necessarily still passing, and without a
+    # schedule a new query is only applied when something touches the
+    # repository.
+    #
+    # This covers `main` only. A scheduled run always uses the default branch —
+    # the `branches:` filters above apply to `push` and `pull_request`, not to
+    # `schedule` — so it cannot be pointed at `dev` by listing it there.
+    #
+    # Accepted rather than worked around. Anything on `dev` was scanned by the
+    # push that put it there, so the only gap is a query published afterwards
+    # while `dev` stays quiet and no release carries it to `main`. That code is
+    # unreleased, and the gap closes at the next release.
+    #
+    # The alternative, a second schedule-only job checking out `dev` and
+    # passing `ref`/`sha` to the analyze step, would never run on a pull
+    # request, so nothing would prove it still worked. It would fail by
+    # producing no results, which is the hardest failure to notice — a worse
+    # trade than a documented boundary. Making `dev` the default branch would
+    # fix it properly, since `dev` holds everything `main` does and more.
     - cron: '41 5 * * 1'
 
 concurrency:
