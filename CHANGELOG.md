@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`VERSION` and `ARTOOLKIT5_TS_VERSION`** — this package's version, so a
+  bundled copy can be identified at runtime. Closes #52.
+
+  Nothing exposed a version before, and `dist/` embedded none, which made a
+  loaded build impossible to pin down. While debugging `arjs-plugin-artoolkit`
+  the console showed versions for the layer above and the layer below, and
+  nothing for the one actually doing the detection.
+
+  Two names for one value, matching `artoolkit5-wasm` and
+  `artoolkit5-constants`, which both do the same: `VERSION` reads naturally
+  alone, and the prefixed name stays unambiguous when several packages in this
+  family are imported together — a wildcard re-export otherwise makes a bare
+  `VERSION` a coin toss.
+
+  Substituted at build time from `package.json` rather than imported from it:
+  importing the manifest into `src/` would inline the whole thing, dependency
+  list included, into every bundle. A copy not produced by this build reports
+  `0.0.0-unbuilt` rather than a version it cannot vouch for.
+
+  It is exported, not logged. A library printing to the console because it was
+  loaded is noise for consumers who did not ask for it; anything wanting the
+  version in a startup banner can read it and log it itself. Note
+  `artoolkit5-wasm` does log on import, so the family is not uniform here.
+
 ### Changed
 
 - Both runtime dependencies move to **0.4.0**:

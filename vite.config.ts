@@ -1,7 +1,24 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 
+import pkg from './package.json';
+
 export default defineConfig({
+  // Substitutes the package version into `src/version.ts`, so a built copy can
+  // say which one it is.
+  //
+  // Read from package.json rather than `process.env.npm_package_version`, which
+  // npm only sets when the build runs through an npm script — a bare
+  // `vite build` or `npx vitest` would leave it undefined and silently ship the
+  // fallback. Reading the manifest works however the build was invoked.
+  //
+  // `define` rather than importing package.json inside `src/`: that import
+  // would inline the entire manifest, dependency list and all, into every
+  // bundle.
+  define: {
+    __ARTOOLKIT5_TS_VERSION__: JSON.stringify(pkg.version),
+  },
+
   // Development server: serve examples in dev mode
   server: {
     open: '/examples/index.html',
