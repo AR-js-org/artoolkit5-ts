@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loaded is noise for consumers who did not ask for it; anything wanting the
   version in a startup banner can read it and log it itself. Note
   `artoolkit5-wasm` does log on import, so the family is not uniform here.
+  `examples/webcam/` logs it, which is the pattern: the consumer decides.
+
+  The release workflow now sets the package version **before** typechecking,
+  testing and building. It bumped afterwards, which with this feature would have
+  embedded the previous version in the published bundle while `package.json`
+  carried the new one. A side benefit: the version test runs after the bump, so
+  `npm test` during a release now checks the value actually being released.
 
 ### Changed
 

@@ -55,6 +55,7 @@ import {
     loadPatternMarker,
     processFrame,
     trackMarker,
+    VERSION,
     type ARToolKitState,
     type MarkerPose,
     type ThresholdMode,
@@ -80,6 +81,12 @@ const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto_median', 'auto_otsu', 
 const OUTLINE_COLOUR = '#00ff88';
 
 async function main(): Promise<void> {
+    // The library deliberately does not log on import, so identifying the build
+    // is the consumer's call. This is that call, and it is the reason the
+    // version is exported: when something misbehaves, the console says which
+    // copy of the detector was loaded.
+    console.log(`artoolkit5-ts v${VERSION}`);
+
     const stage = getStage();
     const video = await startCamera(stage);
 

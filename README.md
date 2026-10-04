@@ -251,7 +251,7 @@ This package's version as a string, substituted at build time, so a bundled copy
 ```typescript
 import { VERSION } from '@ar-js-org/artoolkit5-ts';
 
-console.log(`artoolkit5-ts ${VERSION}`); // artoolkit5-ts 0.2.2
+console.log(`artoolkit5-ts v${VERSION}`); // artoolkit5-ts v0.2.2
 ```
 
 Two names for one value. `VERSION` reads naturally on its own; the prefixed name stays unambiguous when several packages in this family are imported together, since `artoolkit5-wasm` and `artoolkit5-constants` export a bare `VERSION` too.
