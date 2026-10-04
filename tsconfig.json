@@ -21,5 +21,12 @@
     // stops being true.
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  // Everything whose types are worth checking, not just what ships. `test/`,
+  // `examples/` and this file's sibling `vite.config.ts` are compiled by vitest
+  // and the dev server at runtime, which catches syntax and resolution errors
+  // but no type errors — before this they were checked by nobody (#44).
+  //
+  // Emit is unaffected: `tsconfig.build.json` extends this and narrows `include`
+  // back to `src/index.ts`, so widening here cannot reach `dist/`.
+  "include": ["src", "test", "examples", "vite.config.ts"]
 }
