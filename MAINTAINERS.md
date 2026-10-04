@@ -181,10 +181,31 @@ gh workflow run publish-tag.yml --repo AR-js-org/artoolkit5-ts -f tag=vX.Y.Z
 ```
 
 It does only the publish — no commit, no tag, no changelog promotion — so it is
-safe against a tag that is already released. It checks the tag agrees with the
-manifest and that the version is not already on npm, then builds from the tagged
-tree and publishes. Crucially it publishes **with provenance**, which is the
-whole reason not to fall back to doing it by hand.
+safe against a tag that is already released. Crucially it publishes **with
+provenance**, which is the whole reason not to fall back to doing it by hand.
+
+What it refuses, before installing anything or reaching the registry:
+
+- a tag that is not `vX.Y.Z`, so a branch name cannot be passed as one
+- a ref outside `refs/tags/`, so a *branch* called `v0.3.0` cannot stand in for
+  the tag — `checkout` would otherwise resolve either
+- a tag with no GitHub Release, since a bare tag only proves someone pushed a
+  tag, not that a release ran
+- a tag whose name disagrees with `package.json`, meaning the wrong tree
+- a version already on npm, so a re-run says so plainly instead of hitting npm's
+  E403, which reads like an authentication failure
+
+**It chooses the dist-tag rather than inheriting it.** `npm publish` moves
+`latest` unless told otherwise, and this workflow can publish a version *older*
+than one already released — recovering 0.2.1 after 0.2.2 shipped, say. That
+would point `latest` backwards and every plain `npm install` would fetch the
+older package. So it publishes under `recovered` when the version is not the
+newest, or is a prerelease, and only takes `latest` when it genuinely is the
+newest. The run summary says which it chose, and how to remove the extra tag:
+
+```bash
+npm dist-tag rm @ar-js-org/artoolkit5-ts recovered
+```
 
 > [!IMPORTANT]
 > This needs **its own trusted publisher** on npmjs.com. npm authorises a
