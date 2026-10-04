@@ -244,6 +244,20 @@ ARToolKit produces a 3×4 row-major pose; WebGL wants a 4×4 column-major matrix
 
 Both take an optional output buffer — supply one in hot paths to avoid allocating.
 
+### `VERSION` / `ARTOOLKIT5_TS_VERSION`
+
+This package's version as a string, substituted at build time, so a bundled copy can say which one it is.
+
+```typescript
+import { VERSION } from '@ar-js-org/artoolkit5-ts';
+
+console.log(`artoolkit5-ts ${VERSION}`); // artoolkit5-ts 0.2.2
+```
+
+Two names for one value. `VERSION` reads naturally on its own; the prefixed name stays unambiguous when several packages in this family are imported together, since `artoolkit5-wasm` and `artoolkit5-constants` export a bare `VERSION` too.
+
+Nothing is logged on import — if you want the version in a startup banner, read it and log it yourself. A copy not produced by this package's build reports `0.0.0-unbuilt`, rather than claiming a version it cannot vouch for.
+
 ### Types
 
 `ARToolKitState`, `MarkerPose`, `FrameResult`, `LostMarker`, `TrackedMarkerState`, `MarkerType`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
