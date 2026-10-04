@@ -31,14 +31,12 @@ export default defineConfig({
       // Users must install it separately as a peer dependency
       external: [
         '@ar-js-org/artoolkit5-wasm',
-        '@ar-js-org/artoolkit5-wasm/loader',
       ],
 
       output: {
         // UMD global names for browser <script> usage
         globals: {
           '@ar-js-org/artoolkit5-wasm': 'ARToolkit5Wasm',
-          '@ar-js-org/artoolkit5-wasm/loader': 'ARToolkit5WasmLoader',
         },
       },
     },
