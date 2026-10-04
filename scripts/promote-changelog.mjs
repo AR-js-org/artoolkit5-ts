@@ -46,6 +46,23 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const REPO = 'https://github.com/AR-js-org/artoolkit5-ts';
 const CHANGELOG = 'CHANGELOG.md';
 
+/**
+ * Escapes every regular-expression metacharacter in `value`, so that embedding
+ * it in a pattern matches those characters literally.
+ *
+ * The version reaching this script is a command-line argument. The release
+ * workflow validates it against a semver pattern before calling, and that
+ * pattern admits only digits, letters, `.` and `-`, none of which could alter a
+ * pattern here. But this script is also runnable by hand and validates nothing
+ * itself, so it escapes rather than depending on its caller having done so.
+ *
+ * @param {string} value - Text that should be matched literally.
+ * @returns {string} The same text with every metacharacter escaped.
+ */
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const version = process.argv[2];
 if (!version) {
     console.error('Usage: node scripts/promote-changelog.mjs <version>');
@@ -65,7 +82,7 @@ if (!unreleasedHeading.test(text)) {
 // it twice for the same version succeeds and produces two headings for that
 // version, the second one empty. The realistic way in is promoting by hand and
 // then letting the release workflow promote again.
-if (new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`, 'm').test(text)) {
+if (new RegExp(`^## \\[${escapeRegExp(version)}\\]`, 'm').test(text)) {
     console.error(
         `${CHANGELOG} already has a "## [${version}]" section. ` +
         'Promoting again would add a second, empty one.\n' +
