@@ -186,9 +186,12 @@ export { loadNFTMarker, processNFTFrame } from './nft';
   - Example: `feat: add marker group tracking support`
   - For breaking changes, append `!` before the colon: `feat!: redesign marker API`
 
-  These nine are not arbitrary: `scripts/release-notes.mjs` groups commits into
-  the generated release notes by exactly this set, in this order. Keep the two in
-  step — a type outside the list reaches no section, and the script's `Other`
-  bucket does not catch it either, since that only collects subjects which fail
-  to parse as Conventional Commits at all. Such a commit is dropped from the
-  notes entirely, unless it is marked breaking with `!`.
+  These nine are not arbitrary: `SECTIONS` in
+  `scripts/format-release-notes.mjs` groups commits into the generated release
+  notes by exactly this set, in this order. Keep the two in step.
+
+  A type outside the list is no longer lost — it falls through to the notes'
+  `Other` section, and the script warns on stderr naming it. Treat that warning
+  as the signal it is: this list and `SECTIONS` have drifted apart, and the type
+  belongs in both rather than in `Other`. A breaking change renders in its own
+  section whatever its type, so `!` sidesteps the question.
