@@ -27,11 +27,11 @@ export default defineConfig({
 
     // Rollup options for external dependencies
     rollupOptions: {
-      // Keep artoolkit5-wasm external (not bundled)
-      // Users must install it separately as a peer dependency
-      external: [
-        '@ar-js-org/artoolkit5-wasm',
-      ],
+      // Keep artoolkit5-wasm out of the bundle. It is an ordinary dependency,
+      // not a peer one, so npm installs it for consumers either way — external
+      // only means the `.wasm` binary is fetched once and cached rather than
+      // copied into every bundle that depends on this package.
+      external: ['@ar-js-org/artoolkit5-wasm'],
 
       output: {
         // UMD global names for browser <script> usage
