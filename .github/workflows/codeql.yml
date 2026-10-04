@@ -1,0 +1,72 @@
+name: CodeQL
+
+# Replaces GitHub's default setup, which analyses only the default branch.
+# Everything here is integrated on `dev` and reaches `main` only at release
+# time, so default setup reported findings against code that had been on `dev`
+# for days, and its alerts could not clear until a release carried the fix
+# across. Analysing both branches and pull requests puts a finding in front of
+# whoever is still holding the context for it.
+#
+# It also removes a structural mismatch: default setup's autofix branches are
+# cut from the default branch, while every pull request here targets `dev`. Two
+# such branches (#66, #67) arrived carrying an unrelated release commit and
+# conflicting with `dev`, and were replaced by #68 rather than merged.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    # Weekly. Queries are added to CodeQL over time, so code that passed when
+    # it was written is not necessarily still passing; without a schedule a new
+    # query is only applied when something happens to touch the repository.
+    - cron: '41 5 * * 1'
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Uploading results to the code scanning API. This is the one scope the
+      # workflow cannot do without, and the reason its permissions are declared
+      # per job rather than inherited.
+      security-events: write
+      contents: read
+      # The `actions` analysis reads workflow definitions, including those of
+      # other workflows in the repository.
+      actions: read
+
+    strategy:
+      # A failure analysing one language should still report the other, rather
+      # than cancelling it and hiding whether the problem is language-specific.
+      fail-fast: false
+      matrix:
+        # Both of what default setup was analysing, so alert history stays
+        # comparable rather than restarting. `actions` is what found the
+        # missing-permissions alert on `ci.yml`, which is worth keeping.
+        language: [javascript-typescript, actions]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+
+      # No build step. Both languages are analysed from source, so `autobuild`
+      # would find nothing to do; `npm ci` would only slow the run down, since
+      # CodeQL does not need the dependency tree to parse this project.
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          # Keeps the two languages' results as separate entries rather than
+          # each upload replacing the other.
+          category: '/language:${{ matrix.language }}'
