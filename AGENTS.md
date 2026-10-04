@@ -40,10 +40,18 @@ examples/
 ## Commands
 
 ```bash
-npm run dev      # Vite dev server — opens examples/webcam/index.html
-npm run build    # vite build + tsc (lib output + .d.ts)
-npm run preview  # Preview production build
+npm run dev        # Vite dev server — opens examples/webcam/index.html
+npm run build      # vite build + tsc (lib output + .d.ts)
+npm run preview    # Preview production build
+npm test           # vitest
+npm run typecheck  # tsc --noEmit over src, test, examples and vite.config.ts
 ```
+
+`typecheck` covers more than what ships, deliberately: `test/` and `examples/`
+are compiled at runtime by vitest and the dev server, which catch syntax and
+resolution errors but no type errors. The two `scripts/*.mjs` and
+`test/release-notes.test.js` are plain JavaScript and stay outside it, since
+`allowJs` is off.
 
 ## Conventions
 
