@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Both runtime dependencies move to **0.4.0**:
-  `@ar-js-org/artoolkit5-wasm` and `@ar-js-org/artoolkit5-constants`.
-  `artoolkit5-wasm` is external to this bundle, so consumers install it
-  themselves and the floor moves with this range.
+  `@ar-js-org/artoolkit5-wasm` and `@ar-js-org/artoolkit5-constants`. Both are
+  ordinary `dependencies`, so they install automatically; `artoolkit5-wasm` is
+  additionally left external to this bundle, which keeps the `.wasm` binary out
+  of every dependent bundle but does not change how it is installed. Either way
+  the minimum version moves with this range.
 
   Additive for anything here. The constants release only adds exports —
   `VERSION` and `ARTOOLKIT_CONSTANTS_VERSION` — and removes no values, so

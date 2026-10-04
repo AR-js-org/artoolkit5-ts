@@ -36,7 +36,7 @@ It is renderer-agnostic and DOM-free. It gives you marker poses as matrices; wha
 npm install @ar-js-org/artoolkit5-ts
 ```
 
-[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.3.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
+[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.4.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
 
 `three` is only needed to run the examples, not the library.
 
@@ -307,7 +307,7 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## ⚠️ Limitations
 
-- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color_and_matrix'` and `'mono_and_matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.3.0`; this matters only if you override it.
+- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color_and_matrix'` and `'mono_and_matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.4.0`; this matters only if you override it.
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
 - **NFT markers are out of scope** for this project — see [Roadmap](#-roadmap).
 
