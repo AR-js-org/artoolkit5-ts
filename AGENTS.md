@@ -8,7 +8,7 @@ TypeScript library wrapping `@ar-js-org/artoolkit5-wasm` (Emscripten/WASM build 
 - **Build**: Vite 8 in library mode — outputs ES (`artoolkit5-ts.js`) and UMD (`artoolkit5-ts.umd.cjs`)
 - **Types**: emitted via `tsc -p tsconfig.build.json`
 - **3D rendering**: Three.js (used in examples, peer-dep in library)
-- **WASM dependency**: `@ar-js-org/artoolkit5-wasm` (pinned git commit, treated as external in the bundle)
+- **WASM dependency**: `@ar-js-org/artoolkit5-wasm` (npm range `^0.4.0`; an ordinary dependency, so it installs automatically, but kept external to the bundle)
 
 ## Source layout
 
