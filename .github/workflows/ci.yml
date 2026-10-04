@@ -12,6 +12,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only, and set explicitly rather than inherited. A workflow with no
+# `permissions:` block gets whatever the repository default is, which can be
+# read and write for every scope — far more than CI needs, and granted to every
+# step including third-party actions. Nothing here writes to the repository:
+# it checks out, installs, typechecks, tests, builds and packs.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
