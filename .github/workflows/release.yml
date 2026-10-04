@@ -136,15 +136,17 @@ jobs:
           fi
           echo "$NAME@$VERSION is available."
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
+      # Ordered before the build, not after it. `vite.config.ts` reads the
+      # version out of package.json and substitutes it into the bundle, so
+      # building first embedded the *previous* version while the published
+      # package.json carried the new one — a package confidently reporting a
+      # version it is not, which is worse than exposing none.
+      #
+      # Bumping first also puts the version test in `npm test` below to work:
+      # it compares the exported constant against package.json, so it now
+      # checks the value actually being released rather than the one it
+      # replaced.
+      #
       # `npm version` refuses to set a version to the one already in
       # package.json, exiting with "Version not changed". That is the normal
       # state for a first release, where the version was set by hand, so the
@@ -159,6 +161,15 @@ jobs:
             echo "Bumping $CURRENT -> $VERSION."
             npm version "$VERSION" --no-git-tag-version
           fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
 
       - name: Promote the changelog
         run: node scripts/promote-changelog.mjs "$VERSION"
