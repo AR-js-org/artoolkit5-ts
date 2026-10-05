@@ -210,6 +210,11 @@ function createFrameGrabber(video: HTMLVideoElement): () => Uint8ClampedArray | 
  * handed to `processFrame`, origin top-left — so drawing it needs no pose and
  * no projection matrix. That is the point of the field: an outline, a
  * hit-test or an occlusion mask costs nothing beyond the detection itself.
+ *
+ * The dot marks the marker's own top-left corner, resolved through `dir`. Turn
+ * the printed marker and it stays on the same printed corner while the outline
+ * rotates around it — which is the behaviour to check, and what marking
+ * `vertex[0]` instead would not give you.
  */
 function createOutlineDrawer(stage: HTMLElement): (marker: MarkerPose | undefined) => void {
     const canvas = document.createElement('canvas');
@@ -239,10 +244,11 @@ function createOutlineDrawer(stage: HTMLElement): (marker: MarkerPose | undefine
         context.lineWidth = 3;
         context.stroke();
 
-        // Corner 0 is marked because the ordering is rotation-dependent and is
-        // the part a consumer has to get right: see MarkerPose.vertex.
+        // The marker's own top-left, not `vertex[0]`. ARToolKit's mapping, the
+        // one it feeds its pose solver: see MarkerPose.vertex.
+        const [cornerX, cornerY] = marker.vertex[(4 - marker.dir) % 4];
         context.beginPath();
-        context.arc(startX, startY, 5, 0, Math.PI * 2);
+        context.arc(cornerX, cornerY, 5, 0, Math.PI * 2);
         context.fillStyle = OUTLINE_COLOUR;
         context.fill();
     };
