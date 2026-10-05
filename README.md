@@ -269,6 +269,7 @@ interface MarkerPose {
   confidence: number;      // 0–1, from this marker's own family
   matrix: Float64Array;    // 3x4, row-major, as ARToolKit produces it
   matrixGL: Float32Array;  // 4x4, column-major, right-handed, WebGL-ready
+  dir: number;             // 0-3, the marker's rotation — resolves vertex order
   vertex: [number, number][];  // the square's 4 corners, camera image coords
 }
 ```
@@ -280,21 +281,32 @@ things differ from the pose matrices:
 
 - **It is freshly allocated per frame**, not a view onto a reused buffer, so it is
   safe to retain without copying. `matrix` and `matrixGL` are the opposite.
-- **Corner order follows the marker's rotation, and cannot yet be resolved.**
-  `vertex[0]` is wherever the square tracer began, so which physical corner it
-  lands on changes as the marker turns. The rotation-invariant mapping is
-  `vertex[(4 - dir) % 4]` — the same one ARToolKit uses internally to feed its
-  pose solver — but `dir` is **not exposed yet** ([#62]), so that formula is
-  not something you can apply today. Outlining the square is unaffected;
-  anything orientation-sensitive is blocked until `dir` lands.
+- **Corner order follows the square tracer, not the marker** — use `dir` to
+  resolve it. `vertex[0]` is wherever tracing began, so which physical corner it
+  lands on changes as the marker turns. `dir` counts the quarter turns, so:
 
-[#62]: https://github.com/AR-js-org/artoolkit5-ts/issues/62
+  ```typescript
+  const topLeft = pose.vertex[(4 - pose.dir) % 4];
+  ```
 
-The webcam example draws exactly this outline, marking corner 0 so the
-ordering is visible: see `createOutlineDrawer` in
+  with the other three clockwise from it as `(5 - dir) % 4`, `(6 - dir) % 4` and
+  `(7 - dir) % 4`. This is ARToolKit's own mapping, not a convention invented
+  here: it is what `arGetTransMat.c` feeds the pose solver, pairing those four
+  indices with marker-space coordinates that run top-left, top-right,
+  bottom-right, bottom-left.
+
+  Outlining or hit-testing needs none of this — any order traces the same
+  quadrilateral. It matters when a specific printed corner has to be identified:
+  anchoring a label, mapping a texture, deciding which edge is the marker's top.
+
+The webcam example draws exactly this outline, marking the resolved top-left so
+the dot stays on the same printed corner however the marker is turned: see
+`createOutlineDrawer` in
 [`examples/webcam/main.ts`](examples/webcam/main.ts).
 
 `confidence` is read from the field belonging to the marker's family — `cfPatt` or `cfMatrix` — so it is comparable within a family but not across them. See [`minConfidence`](#minconfidence--rejecting-weak-matches) for measured ranges.
+
+`dir` is read per family in the same way, from `dirPatt` or `dirMatrix`. The engine also reports a combined `dir`, which this library deliberately ignores: it is -1 whenever both pattern and matrix detection are active, which is exactly the configuration where the rotation is still wanted. The value here is always 0 to 3.
 
 `type` says which family a detection came from. The engine reports the two through separate fields — `idPatt` for pattern markers, `idMatrix` for barcode markers — and each is matched only against its own registry, so `type` follows from which registry answered rather than from any value the engine supplies. This is also why the families have independent ID spaces: the same integer in each is two unrelated markers.
 

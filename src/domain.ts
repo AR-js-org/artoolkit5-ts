@@ -93,6 +93,24 @@ export interface MarkerPose {
      */
     matrixGL: Float32Array;
     /**
+     * How many quarter turns the printed marker is rotated, 0 to 3, relative
+     * to the order the corners in `vertex` arrived in.
+     *
+     * Read from the field belonging to this marker's family — `dirPatt` for a
+     * pattern marker, `dirMatrix` for a barcode — exactly as `confidence` is.
+     * The binding also reports a combined `dir`, which is deliberately not used
+     * here: it is -1 whenever both pattern and matrix detection are active,
+     * which is precisely when a consumer still needs the rotation.
+     *
+     * Always 0 to 3, never -1. A pose exists only for a family that matched,
+     * and a family that matched has its rotation populated.
+     *
+     * Its only use is resolving `vertex` — see below. It is not an orientation
+     * in space; `matrix` and `matrixGL` already carry that, with the rotation
+     * applied.
+     */
+    dir: number;
+    /**
      * The four corners of the detected square, in camera image coordinates
      * with the origin at top-left.
      *
@@ -100,14 +118,24 @@ export interface MarkerPose {
      * buffer — the engine builds a fresh array each frame, so it is safe to
      * retain without copying.
      *
-     * Corner order depends on the marker's rotation, and that rotation is not
-     * exposed yet. `vertex[0]` is wherever the square tracer began, so the
-     * physical corner it lands on changes as the marker turns. Resolving it
-     * needs `vertex[(4 - dir) % 4]` — ARToolKit's own mapping, the one it
-     * feeds to its pose solver — but `dir` is not currently carried through
-     * from the binding, so that cannot be applied. Outlining the square is
-     * unaffected; anything orientation-sensitive is blocked on
-     * https://github.com/AR-js-org/artoolkit5-ts/issues/62.
+     * **Order follows the square tracer, not the marker.** `vertex[0]` is
+     * wherever tracing began, so the physical corner it lands on changes as the
+     * marker turns. Use `dir` to get a stable corner:
+     *
+     * ```ts
+     * const topLeft = pose.vertex[(4 - pose.dir) % 4];
+     * ```
+     *
+     * and the remaining three clockwise from it as `(5 - dir) % 4`,
+     * `(6 - dir) % 4`, `(7 - dir) % 4`. That is not a convention invented here:
+     * it is the mapping ARToolKit feeds its own pose solver, in
+     * `arGetTransMat.c`, where those four indices are paired with marker-space
+     * coordinates running top-left, top-right, bottom-right, bottom-left.
+     *
+     * Outlining or hit-testing the square needs none of this — any order traces
+     * the same quadrilateral. It matters when a specific printed corner has to
+     * be identified: anchoring a label, mapping a texture, deciding which edge
+     * is the marker's top.
      */
     vertex: [number, number][];
 }
@@ -201,6 +229,17 @@ export interface MarkerInfo {
     cfPatt: number;
     /** Matrix-code confidence, 0.0-1.0, or -1.0 when there was no match. */
     cfMatrix: number;
+    /**
+     * Rotation of the pattern match, 0 to 3, or -1 when the mode does not
+     * include template matching. Counts quarter turns of the printed marker
+     * relative to the order `vertex` arrived in — see {@link MarkerPose.dir}.
+     */
+    dirPatt: number;
+    /**
+     * Rotation of the matrix-code match, 0 to 3, or -1 when the mode does not
+     * include matrix detection. Same meaning as `dirPatt`, for the other family.
+     */
+    dirMatrix: number;
     /**
      * 2D positions of the square's four corners, in camera image coordinates
      * with the origin at top-left. Populated in every detection mode, unlike

@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`MarkerPose.dir`** — the marker's rotation, 0 to 3, which is what makes
+  `vertex` order resolvable. Closes #62.
+
+  `vertex` (0.2.1) gives the detected square's four corners, but `vertex[0]` is
+  wherever ARToolKit's square tracer began, so the printed corner it lands on
+  moves as the marker turns. `dir` counts the quarter turns, so a stable corner
+  is `vertex[(4 - dir) % 4]`, and the rest clockwise from it as `(5 - dir) % 4`,
+  `(6 - dir) % 4`, `(7 - dir) % 4`.
+
+  That formula was already documented in 0.2.1, in the README and in the
+  `MarkerPose.vertex` JSDoc — without `dir` being exposed, which made it
+  unusable. It is now simply true. The published 0.2.1 entry is left as written
+  rather than rewritten after the fact.
+
+  It is not a convention invented here. `arGetTransMat.c` pairs exactly those
+  four indices with marker-space coordinates running top-left, top-right,
+  bottom-right, bottom-left, to feed ARToolKit's own pose solver.
+
+  **Read per family, from `dirPatt` or `dirMatrix`**, exactly as `confidence`
+  reads `cfPatt`/`cfMatrix`. The binding also reports a combined `dir`, which is
+  deliberately not used: it is -1 whenever both pattern and matrix detection are
+  active, which is precisely the configuration where a consumer still wants the
+  rotation. One square matching both families produces two poses, and each
+  carries its own family's rotation. `MarkerPose.dir` is therefore always 0 to 3,
+  never -1.
+
+  `MarkerInfo` gains `dirPatt` and `dirMatrix` to match. No dependency bump:
+  both were bound in `artoolkit5-wasm` 0.3.0 alongside `idPatt`/`cfPatt`, and
+  this package already requires `^0.4.0`.
+
+  `examples/webcam/` now marks the resolved top-left rather than corner 0, so
+  the dot stays on the same printed corner while the outline rotates around it —
+  which is the thing worth being able to see.
+
 - **`VERSION` and `ARTOOLKIT5_TS_VERSION`** — this package's version, so a
   bundled copy can be identified at runtime. Closes #52.
 
@@ -78,15 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before 0.3.1 corrected it.
 
 ### Fixed
-
-- Documentation no longer states a corner-order formula that cannot be
-  applied. The 0.2.1 entry below, the README and the `MarkerPose.vertex`
-  JSDoc all gave `vertex[(4 - dir) % 4]` as the marker's top-left corner
-  without mentioning that `dir` is not exposed, making it unusable. The
-  formula is correct — it is what ARToolKit feeds its own pose solver — so the
-  text now says plainly that it is blocked until `dir` is carried through
-  (#62). The released 0.2.1 entry is left as written rather than rewritten
-  after publication.
 
 - **`getCameraProjectionMatrix` now returns a real `Float64Array`.** It declared
   one and returned whatever the binding handed over, which is a plain JS array:
