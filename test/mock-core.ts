@@ -176,7 +176,11 @@ export function createMockState(options: MockCoreOptions = {}): {
                 calls.transMatCont.push(index);
             },
             getTransform: () => POSE_HEAP_INDEX * Float64Array.BYTES_PER_ELEMENT,
-            getCameraLens: () => new Float64Array(16).fill(0.5),
+            // A plain array, matching the binding. This returned a
+            // `Float64Array` until #10 — written to domain.ts's declaration
+            // rather than to what the binding does — and a mock that agrees
+            // with a wrong declaration is a mock that cannot catch it.
+            getCameraLens: () => new Array(16).fill(0.5),
             recalculateCameraLens: () => {
                 calls.recalculateCameraLens += 1;
             },

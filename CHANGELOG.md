@@ -88,6 +88,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#62). The released 0.2.1 entry is left as written rather than rewritten
   after publication.
 
+- **`getCameraProjectionMatrix` now returns a real `Float64Array`.** It declared
+  one and returned whatever the binding handed over, which is a plain JS array:
+  `ARToolKitCore::getCameraLens()` fills an `emscripten::val::array()` element by
+  element. Anything treating the result as a typed array — `.set()`,
+  `.subarray()`, `BYTES_PER_ELEMENT`, passing it to a WebGL uniform expecting one
+  — was working against an `Array`. Closes #10.
+
+  The original issue suspected a heap pointer, by analogy with `getTransform()`.
+  It is not one; the values themselves cross the boundary, just boxed.
+
+  `ARToolKitCore.getCameraLens()` is now declared `number[]`, which is what it
+  actually returns. Describing the binding rather than the preference is what
+  lets the type system catch a pass-through here in future; declaring it
+  `Float64Array` is how this survived unnoticed, because `test/mock-core.ts`
+  was written to agree with the declaration. The conversion lives in
+  `getCameraProjectionMatrix`, where callers want a matrix.
+
+  The copy stays even once the binding returns a typed array (#77, with the C++
+  side as AR-js-org/artoolkit5-wasm#41). A zero-copy heap view would change
+  under `recalculateCameraLens()`, detach if the Wasm heap grew, and let a
+  consumer write into the core's own matrix — all of which matter for a value
+  read once at setup and expected to be kept.
+
 ## [0.2.2] - 2026-09-19
 
 ### Changed
