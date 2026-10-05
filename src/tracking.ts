@@ -184,15 +184,17 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
         // combined modes. Both are checked because one square can match a
         // pattern and a barcode in the same frame.
         const pattern = matchFamily(
-            state.patternMarkers, state, candidate,
-            info.idPatt, info.cfPatt, 'pattern', state.minConfidence.pattern,
+            state.patternMarkers, state, candidate, 'pattern',
+            state.minConfidence.pattern,
+            { id: info.idPatt, confidence: info.cfPatt, dir: info.dirPatt },
             info.vertex
         );
         if (pattern) detected.push(pattern);
 
         const barcode = matchFamily(
-            state.barcodeMarkers, state, candidate,
-            info.idMatrix, info.cfMatrix, 'barcode', state.minConfidence.barcode,
+            state.barcodeMarkers, state, candidate, 'barcode',
+            state.minConfidence.barcode,
+            { id: info.idMatrix, confidence: info.cfMatrix, dir: info.dirMatrix },
             info.vertex
         );
         if (barcode) detected.push(barcode);
@@ -202,22 +204,43 @@ function collectDetectedPoses(state: ARToolKitState): MarkerPose[] {
 }
 
 /**
+ * One family's reading of a single detection candidate.
+ *
+ * Grouped rather than passed as three loose numbers because choosing between
+ * `idPatt`/`cfPatt`/`dirPatt` and the matrix equivalents is the *only* thing
+ * that differs between the two calls below, and because four adjacent `number`
+ * parameters are transposable in silence — `candidate`, `id`, `confidence`,
+ * `minConfidence` and now `dir` all typecheck in any order.
+ */
+interface FamilyReading {
+    /** `idPatt` or `idMatrix`. */
+    id: number;
+    /** `cfPatt` or `cfMatrix`. */
+    confidence: number;
+    /** `dirPatt` or `dirMatrix`. */
+    dir: number;
+}
+
+/**
  * Resolves one detection family against its own registry, returning the pose
  * if a marker is registered under the reported ID.
  *
  * Each family is looked up only in its own registry, so an ID reported by one
- * can never resolve to a marker registered in the other.
+ * can never resolve to a marker registered in the other. The same holds for
+ * every value on `reading`: a pose carries the confidence and rotation of the
+ * match that produced it, never the other family's.
  */
 function matchFamily(
     registry: Record<number, TrackedMarkerState>,
     state: ARToolKitState,
     candidate: number,
-    id: number,
-    confidence: number,
     type: MarkerType,
     minConfidence: number,
+    reading: FamilyReading,
     vertex: [number, number][]
 ): MarkerPose | undefined {
+    const { id, confidence, dir } = reading;
+
     if (id === UNRECOGNISED_MARKER_ID) return undefined;
 
     const tracked = registry[id];
@@ -235,6 +258,7 @@ function matchFamily(
         id: tracked.id,
         type,
         confidence,
+        dir,
         matrix: tracked.matrix,
         matrixGL: tracked.matrixGL,
         vertex,

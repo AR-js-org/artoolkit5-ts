@@ -1,5 +1,5 @@
 /*
- *  index.ts
+ *  version.test.ts
  *  artoolkit5-ts
  *
  *  This file is part of artoolkit5-ts - AR-js-org.
@@ -31,32 +31,26 @@
  *
  */
 
-export type {
-    ARToolKitCore,
-    ARToolKitModule,
-    ARToolKitState,
-    FrameResult,
-    LostMarker,
-    MarkerInfo,
-    MarkerPose,
-    MarkerType,
-    TrackedMarkerState,
-} from './domain';
+import { describe, expect, it } from 'vitest';
 
-export type {
-    DetectionMode,
-    DetectorOptions,
-    MinConfidence,
-    ImageProcMode,
-    LabelingMode,
-    MatrixCodeType,
-    ThresholdMode,
-} from './config';
+import { ARTOOLKIT5_TS_VERSION, VERSION } from '../src/index';
 
-export { ARToolKitError } from './errors';
-export { createARToolKitState, disposeARToolKitState } from './init';
-export { configureDetector } from './detector';
-export { loadPatternMarker } from './markers';
-export { processFrame, trackBarcodeMarker, trackMarker } from './tracking';
-export { arglCameraViewRHf, getCameraProjectionMatrix, transMatToGLMat } from './math';
-export { ARTOOLKIT5_TS_VERSION, VERSION } from './version';
+import pkg from '../package.json';
+
+describe('package version', () => {
+    // The point of the whole feature: a built copy can be identified. Asserting
+    // against package.json rather than a literal is what stops this test needing
+    // an edit at every release — and what would catch the injection silently
+    // breaking and leaving a stale or placeholder value behind.
+    it('matches the version in package.json', () => {
+        expect(VERSION).toBe(pkg.version);
+    });
+
+    it('is also exported under the package-specific name', () => {
+        expect(ARTOOLKIT5_TS_VERSION).toBe(pkg.version);
+    });
+
+    it('is a plain semver string, not a template left unreplaced', () => {
+        expect(VERSION).toMatch(/^\d+\.\d+\.\d+/);
+    });
+});

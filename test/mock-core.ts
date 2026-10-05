@@ -79,6 +79,21 @@ export interface MockCoreOptions {
      * opts into it.
      */
     confidence?: { pattern?: number; matrix?: number };
+    /**
+     * Marker rotation the detector reports, per family, 0 to 3.
+     *
+     * The defaults differ between the families — 1 for pattern, 3 for matrix —
+     * deliberately, and unlike `confidence`, which defaults to 1 for both. A
+     * pose must carry the rotation of the family that matched it, and the mock
+     * reports every square in both families, so identical defaults would let a
+     * pose read the wrong one and still pass every test. Distinct defaults make
+     * that confusion visible in any test that looks at `dir` at all, rather than
+     * only in the one written for it.
+     *
+     * Both are non-zero for the same reason: 0 is what `(4 - dir) % 4` collapses
+     * to the identity for, so a default of 0 would hide a missing rotation.
+     */
+    dir?: { pattern?: number; matrix?: number };
 }
 
 /**
@@ -99,6 +114,8 @@ export function createMockState(options: MockCoreOptions = {}): {
     const pose = options.pose ?? Array.from({ length: POSE_ELEMENT_COUNT }, (_, i) => i + 1);
     const cfPatt = options.confidence?.pattern ?? 1;
     const cfMatrix = options.confidence?.matrix ?? 1;
+    const dirPatt = options.dir?.pattern ?? 1;
+    const dirMatrix = options.dir?.matrix ?? 3;
 
     const calls: CoreCalls = {
         teardown: 0,
@@ -166,6 +183,8 @@ export function createMockState(options: MockCoreOptions = {}): {
                     idMatrix: id,
                     cfPatt,
                     cfMatrix,
+                    dirPatt,
+                    dirMatrix,
                     vertex: vertexFor(index),
                 };
             },
@@ -176,7 +195,11 @@ export function createMockState(options: MockCoreOptions = {}): {
                 calls.transMatCont.push(index);
             },
             getTransform: () => POSE_HEAP_INDEX * Float64Array.BYTES_PER_ELEMENT,
-            getCameraLens: () => new Float64Array(16).fill(0.5),
+            // A plain array, matching the binding. This returned a
+            // `Float64Array` until #10 — written to domain.ts's declaration
+            // rather than to what the binding does — and a mock that agrees
+            // with a wrong declaration is a mock that cannot catch it.
+            getCameraLens: () => new Array(16).fill(0.5),
             recalculateCameraLens: () => {
                 calls.recalculateCameraLens += 1;
             },

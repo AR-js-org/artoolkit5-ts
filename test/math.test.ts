@@ -126,6 +126,36 @@ describe('getCameraProjectionMatrix', () => {
         expect(Array.from(getCameraProjectionMatrix(state))).toEqual(new Array(16).fill(0.5));
     });
 
+    // The declared return type, asserted rather than trusted. `Array.from` in
+    // the test above accepts a plain array just as happily as a typed one, so
+    // it passed throughout #10 while the function was returning the binding's
+    // boxed Array straight through. Checking the container, not just the
+    // contents, is the whole point of this test.
+    it('returns a Float64Array, not whatever shape the binding hands over', () => {
+        const { state } = createMockState();
+        expect(getCameraProjectionMatrix(state)).toBeInstanceOf(Float64Array);
+    });
+
+    // A copy, not the binding's own value. The matrix is read once at setup and
+    // expected to be kept, so a consumer must not be handed something the core
+    // can change underneath it — see #77 for why this matters more once the
+    // binding returns a heap view onto the Wasm heap rather than an array.
+    //
+    // The core's return value is pinned to one instance here deliberately.
+    // Comparing against a second `getCameraLens()` call would pass whatever the
+    // function does, since the mock — like the binding — builds a fresh array
+    // every time.
+    it('does not hand back the value the core returned', () => {
+        const { state } = createMockState();
+        const fromCore: number[] = new Array(16).fill(0.5);
+        state.core.getCameraLens = () => fromCore;
+
+        const result = getCameraProjectionMatrix(state);
+
+        expect(result).not.toBe(fromCore);
+        expect(Array.from(result)).toEqual(Array.from(fromCore));
+    });
+
     it('throws once the state is disposed', () => {
         const { state } = createMockState();
         state.disposed = true;

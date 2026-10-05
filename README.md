@@ -36,7 +36,7 @@ It is renderer-agnostic and DOM-free. It gives you marker poses as matrices; wha
 npm install @ar-js-org/artoolkit5-ts
 ```
 
-[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.3.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
+[`@ar-js-org/artoolkit5-wasm`](https://www.npmjs.com/package/@ar-js-org/artoolkit5-wasm) (`^0.4.0`) provides the WebAssembly engine. It installs automatically as a dependency, and is left external rather than bundled so the `.wasm` binary is fetched once and cached instead of being copied into every bundle that depends on it.
 
 `three` is only needed to run the examples, not the library.
 
@@ -244,6 +244,20 @@ ARToolKit produces a 3×4 row-major pose; WebGL wants a 4×4 column-major matrix
 
 Both take an optional output buffer — supply one in hot paths to avoid allocating.
 
+### `VERSION` / `ARTOOLKIT5_TS_VERSION`
+
+This package's version as a string, substituted at build time, so a bundled copy can say which one it is.
+
+```typescript
+import { VERSION } from '@ar-js-org/artoolkit5-ts';
+
+console.log(`artoolkit5-ts v${VERSION}`); // artoolkit5-ts v0.2.2
+```
+
+Two names for one value. `VERSION` reads naturally on its own; the prefixed name stays unambiguous when several packages in this family are imported together, since `artoolkit5-wasm` and `artoolkit5-constants` export a bare `VERSION` too.
+
+Nothing is logged on import — if you want the version in a startup banner, read it and log it yourself. A copy not produced by this package's build reports `0.0.0-unbuilt`, rather than claiming a version it cannot vouch for.
+
 ### Types
 
 `ARToolKitState`, `MarkerPose`, `FrameResult`, `LostMarker`, `TrackedMarkerState`, `MarkerType`, plus `ARToolKitModule`, `ARToolKitCore` and `MarkerInfo` describing the WASM boundary. `DetectorOptions` and its option types (`DetectionMode`, `MatrixCodeType`, `ThresholdMode`, `LabelingMode`, `ImageProcMode`) describe `configureDetector`'s input.
@@ -255,6 +269,7 @@ interface MarkerPose {
   confidence: number;      // 0–1, from this marker's own family
   matrix: Float64Array;    // 3x4, row-major, as ARToolKit produces it
   matrixGL: Float32Array;  // 4x4, column-major, right-handed, WebGL-ready
+  dir: number;             // 0-3, the marker's rotation — resolves vertex order
   vertex: [number, number][];  // the square's 4 corners, camera image coords
 }
 ```
@@ -266,15 +281,32 @@ things differ from the pose matrices:
 
 - **It is freshly allocated per frame**, not a view onto a reused buffer, so it is
   safe to retain without copying. `matrix` and `matrixGL` are the opposite.
-- **Corner order follows the marker's rotation.** `vertex[(4 - dir) % 4]` is
-  the marker's own top-left corner, the rest clockwise from there. Outlining
-  the square can ignore this; anything orientation-sensitive cannot.
+- **Corner order follows the square tracer, not the marker** — use `dir` to
+  resolve it. `vertex[0]` is wherever tracing began, so which physical corner it
+  lands on changes as the marker turns. `dir` counts the quarter turns, so:
 
-The webcam example draws exactly this outline, marking corner 0 so the
-ordering is visible: see `createOutlineDrawer` in
+  ```typescript
+  const topLeft = pose.vertex[(4 - pose.dir) % 4];
+  ```
+
+  with the other three clockwise from it as `(5 - dir) % 4`, `(6 - dir) % 4` and
+  `(7 - dir) % 4`. This is ARToolKit's own mapping, not a convention invented
+  here: it is what `arGetTransMat.c` feeds the pose solver, pairing those four
+  indices with marker-space coordinates that run top-left, top-right,
+  bottom-right, bottom-left.
+
+  Outlining or hit-testing needs none of this — any order traces the same
+  quadrilateral. It matters when a specific printed corner has to be identified:
+  anchoring a label, mapping a texture, deciding which edge is the marker's top.
+
+The webcam example draws exactly this outline, marking the resolved top-left so
+the dot stays on the same printed corner however the marker is turned: see
+`createOutlineDrawer` in
 [`examples/webcam/main.ts`](examples/webcam/main.ts).
 
 `confidence` is read from the field belonging to the marker's family — `cfPatt` or `cfMatrix` — so it is comparable within a family but not across them. See [`minConfidence`](#minconfidence--rejecting-weak-matches) for measured ranges.
+
+`dir` is read per family in the same way, from `dirPatt` or `dirMatrix`. The engine also reports a combined `dir`, which this library deliberately ignores: it is -1 whenever both pattern and matrix detection are active, which is exactly the configuration where the rotation is still wanted. The value here is always 0 to 3.
 
 `type` says which family a detection came from. The engine reports the two through separate fields — `idPatt` for pattern markers, `idMatrix` for barcode markers — and each is matched only against its own registry, so `type` follows from which registry answered rather than from any value the engine supplies. This is also why the families have independent ID spaces: the same integer in each is two unrelated markers.
 
@@ -301,7 +333,7 @@ A helper that does this is on the roadmap; until then it is a few lines you own.
 
 ## ⚠️ Limitations
 
-- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color_and_matrix'` and `'mono_and_matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.3.0`; this matters only if you override it.
+- **Combined detection requires `@ar-js-org/artoolkit5-wasm` >= 0.3.0.** `'color_and_matrix'` and `'mono_and_matrix'` rely on the per-mode marker fields (`idPatt`/`idMatrix`), which earlier versions of the binding did not expose — against `0.2.0` or older those modes silently detect nothing, or report the wrong marker. The dependency range already requires `^0.4.0`; this matters only if you override it.
 - **Worker support is untested.** Nothing in `src/` touches the DOM, which is necessary but not proof — WASM instantiation in worker scope has not been verified.
 - **NFT markers are out of scope** for this project — see [Roadmap](#-roadmap).
 

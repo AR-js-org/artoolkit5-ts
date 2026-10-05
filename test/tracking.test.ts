@@ -211,6 +211,81 @@ describe('vertex', () => {
     });
 });
 
+describe('dir', () => {
+    it('reports the rotation the engine found for the match', () => {
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            dir: { pattern: 2 },
+        });
+        trackMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+
+        expect(detected[0].dir).toBe(2);
+    });
+
+    it('gives each family the rotation of its own match, never the other one', () => {
+        // The point of taking `dirPatt`/`dirMatrix` over the binding's combined
+        // `dir`, which is -1 in exactly this configuration. One square matches
+        // both families; each pose must carry its own family's rotation.
+        const { state } = createMockState({
+            visibleIds: [[MARKER_ID]],
+            dir: { pattern: 1, matrix: 3 },
+        });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+
+        expect(detected.map((m) => [m.type, m.dir])).toEqual([
+            ['pattern', 1],
+            ['barcode', 3],
+        ]);
+    });
+
+    it('never reports the combined -1, even when both families match', () => {
+        // `info.id` and `info.cf` are both -1 in the combined modes and the
+        // combined `info.dir` is too. Reading any of them would surface here.
+        const { state } = createMockState({ visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+        trackBarcodeMarker(state, MARKER_ID);
+
+        const { detected } = processFrame(state, FRAME);
+
+        expect(detected).toHaveLength(2);
+        for (const pose of detected) {
+            expect(pose.dir).toBeGreaterThanOrEqual(0);
+            expect(pose.dir).toBeLessThanOrEqual(3);
+        }
+    });
+
+    it('resolves a stable corner across rotations of the same square', () => {
+        // The whole purpose of the field. The square's corners are reported in
+        // the same order every frame while `dir` changes, which is what happens
+        // physically when a marker is turned in place: the tracer starts at a
+        // different printed corner, and `dir` is what records that. Applying
+        // `(4 - dir) % 4` must pick a different index for each rotation.
+        const resolved = [0, 1, 2, 3].map((dir) => {
+            const { state } = createMockState({
+                visibleIds: [[MARKER_ID]],
+                dir: { pattern: dir },
+            });
+            trackMarker(state, MARKER_ID);
+
+            const pose = processFrame(state, FRAME).detected[0];
+            return pose.vertex[(4 - pose.dir) % 4];
+        });
+
+        // Candidate 0's corners, in the order the mock reports them.
+        expect(resolved).toEqual([
+            [10, 20], // dir 0 -> vertex[0]
+            [10, 40], // dir 1 -> vertex[3]
+            [30, 40], // dir 2 -> vertex[2]
+            [30, 20], // dir 3 -> vertex[1]
+        ]);
+    });
+});
+
 describe('confidence', () => {
     it('reports the confidence of the match that produced each pose', () => {
         const { state } = createMockState({
@@ -322,6 +397,7 @@ describe('confidence', () => {
         configureDetector(state, { minConfidence: { pattern: 0.9 } });
         state.core.getMarkerInfo = () => ({
             id: -1, idPatt: MARKER_ID, idMatrix: -1, cfPatt: 0.2, cfMatrix: -1,
+            dirPatt: 0, dirMatrix: -1,
             vertex: [[0, 0], [1, 0], [1, 1], [0, 1]],
         });
 

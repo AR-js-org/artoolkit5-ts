@@ -9,6 +9,10 @@
     "declarationMap": true,
     "sourceMap": true,
     "allowSyntheticDefaultImports": true,
+    // `vite.config.ts` reads the version out of package.json to inject it, and
+    // test/version.test.ts asserts the exported value against the same file
+    // rather than a literal that would need editing every release.
+    "resolveJsonModule": true,
     // Vite's own ambient declarations, which include `declare module '*?url'`.
     // The examples import the WASM binary through that suffix and would
     // otherwise need a suppression at each import site.
@@ -21,5 +25,12 @@
     // stops being true.
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  // Everything whose types are worth checking, not just what ships. `test/`,
+  // `examples/` and this file's sibling `vite.config.ts` are compiled by vitest
+  // and the dev server at runtime, which catches syntax and resolution errors
+  // but no type errors — before this they were checked by nobody (#44).
+  //
+  // Emit is unaffected: `tsconfig.build.json` extends this and narrows `include`
+  // back to `src/index.ts`, so widening here cannot reach `dist/`.
+  "include": ["src", "test", "examples", "vite.config.ts"]
 }

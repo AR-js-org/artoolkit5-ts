@@ -7,6 +7,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`MarkerPose.dir`** — the marker's rotation, 0 to 3, which is what makes
+  `vertex` order resolvable. Closes #62.
+
+  `vertex` (0.2.1) gives the detected square's four corners, but `vertex[0]` is
+  wherever ARToolKit's square tracer began, so the printed corner it lands on
+  moves as the marker turns. `dir` counts the quarter turns, so a stable corner
+  is `vertex[(4 - dir) % 4]`, and the rest clockwise from it as `(5 - dir) % 4`,
+  `(6 - dir) % 4`, `(7 - dir) % 4`.
+
+  That formula was already documented in 0.2.1, in the README and in the
+  `MarkerPose.vertex` JSDoc — without `dir` being exposed, which made it
+  unusable. It is now simply true. The published 0.2.1 entry is left as written
+  rather than rewritten after the fact.
+
+  It is not a convention invented here. `arGetTransMat.c` pairs exactly those
+  four indices with marker-space coordinates running top-left, top-right,
+  bottom-right, bottom-left, to feed ARToolKit's own pose solver.
+
+  **Read per family, from `dirPatt` or `dirMatrix`**, exactly as `confidence`
+  reads `cfPatt`/`cfMatrix`. The binding also reports a combined `dir`, which is
+  deliberately not used: it is -1 whenever both pattern and matrix detection are
+  active, which is precisely the configuration where a consumer still wants the
+  rotation. One square matching both families produces two poses, and each
+  carries its own family's rotation. `MarkerPose.dir` is therefore always 0 to 3,
+  never -1.
+
+  `MarkerInfo` gains `dirPatt` and `dirMatrix` to match. No dependency bump:
+  both were bound in `artoolkit5-wasm` 0.3.0 alongside `idPatt`/`cfPatt`, and
+  this package already requires `^0.4.0`.
+
+  `examples/webcam/` now marks the resolved top-left rather than corner 0, so
+  the dot stays on the same printed corner while the outline rotates around it —
+  which is the thing worth being able to see.
+
+- **`VERSION` and `ARTOOLKIT5_TS_VERSION`** — this package's version, so a
+  bundled copy can be identified at runtime. Closes #52.
+
+  Nothing exposed a version before, and `dist/` embedded none, which made a
+  loaded build impossible to pin down. While debugging `arjs-plugin-artoolkit`
+  the console showed versions for the layer above and the layer below, and
+  nothing for the one actually doing the detection.
+
+  Two names for one value, matching `artoolkit5-wasm` and
+  `artoolkit5-constants`, which both do the same: `VERSION` reads naturally
+  alone, and the prefixed name stays unambiguous when several packages in this
+  family are imported together — a wildcard re-export otherwise makes a bare
+  `VERSION` a coin toss.
+
+  Substituted at build time from `package.json` rather than imported from it:
+  importing the manifest into `src/` would inline the whole thing, dependency
+  list included, into every bundle. A copy not produced by this build reports
+  `0.0.0-unbuilt` rather than a version it cannot vouch for.
+
+  It is exported, not logged. A library printing to the console because it was
+  loaded is noise for consumers who did not ask for it; anything wanting the
+  version in a startup banner can read it and log it itself. Note
+  `artoolkit5-wasm` does log on import, so the family is not uniform here.
+  `examples/webcam/` logs it, which is the pattern: the consumer decides.
+
+  The release workflow now sets the package version **before** typechecking,
+  testing and building. It bumped afterwards, which with this feature would have
+  embedded the previous version in the published bundle while `package.json`
+  carried the new one. A side benefit: the version test runs after the bump, so
+  `npm test` during a release now checks the value actually being released.
+
+### Changed
+
+- Both runtime dependencies move to **0.4.0**:
+  `@ar-js-org/artoolkit5-wasm` and `@ar-js-org/artoolkit5-constants`. Both are
+  ordinary `dependencies`, so they install automatically; `artoolkit5-wasm` is
+  additionally left external to this bundle, which keeps the `.wasm` binary out
+  of every dependent bundle but does not change how it is installed. Either way
+  the minimum version moves with this range.
+
+  Additive for anything here. The constants release only adds exports —
+  `VERSION` and `ARTOOLKIT_CONSTANTS_VERSION` — and removes no values, so
+  every constant `configureDetector` maps is unchanged. The wasm release
+  keeps `createARToolKit`, `loadCameraFromUrl` and `addMarkerFromUrl`, which
+  is everything `src/` imports, and still ships `dist/artoolkit5.wasm` for
+  the examples.
+
+  One removal did need handling: `artoolkit5-wasm` dropped its `./loader`
+  export. Nothing in `src/` imported it, so there is no behavioural change,
+  but `vite.config.ts` still listed it as external with a UMD global name.
+  Those two lines named an export that no longer resolves and have been
+  dropped.
+
+  Also worth noting for anyone who hit it: `artoolkit5-constants` removed
+  `prepublishOnly`, which used to run a native build on install and needed
+  `--ignore-scripts` to work around.
+
+  On licensing, the three packages are now consistent. All declare MIT, and
+  the resolved tree contains no GPL or LGPL declaration at all. The LGPLv3
+  obligation sits where it belongs and is stated in each `LICENSE` at the
+  right level of involvement: `artoolkit5-wasm` ships the WebARKitLib
+  WebAssembly binary and says redistributing it carries that licence's terms;
+  `artoolkit5-constants` ships only values extracted from LGPLv3 headers and
+  no WebARKitLib code; this package wraps the binary without bundling it, and
+  carries the same note. Raising the range also puts `artoolkit5-constants`
+  0.3.0 out of reach, which was the version that declared GPL-3.0 by mistake
+  before 0.3.1 corrected it.
+
+### Fixed
+
+- **`getCameraProjectionMatrix` now returns a real `Float64Array`.** It declared
+  one and returned whatever the binding handed over, which is a plain JS array:
+  `ARToolKitCore::getCameraLens()` fills an `emscripten::val::array()` element by
+  element. Anything treating the result as a typed array — `.set()`,
+  `.subarray()`, `BYTES_PER_ELEMENT`, passing it to a WebGL uniform expecting one
+  — was working against an `Array`. Closes #10.
+
+  The original issue suspected a heap pointer, by analogy with `getTransform()`.
+  It is not one; the values themselves cross the boundary, just boxed.
+
+  `ARToolKitCore.getCameraLens()` is now declared `number[]`, which is what it
+  actually returns. Describing the binding rather than the preference is what
+  lets the type system catch a pass-through here in future; declaring it
+  `Float64Array` is how this survived unnoticed, because `test/mock-core.ts`
+  was written to agree with the declaration. The conversion lives in
+  `getCameraProjectionMatrix`, where callers want a matrix.
+
+  The copy stays even once the binding returns a typed array (#77, with the C++
+  side as AR-js-org/artoolkit5-wasm#41). A zero-copy heap view would change
+  under `recalculateCameraLens()`, detach if the Wasm heap grew, and let a
+  consumer write into the core's own matrix — all of which matter for a value
+  read once at setup and expected to be kept.
+
 ## [0.2.2] - 2026-09-19
 
 ### Changed

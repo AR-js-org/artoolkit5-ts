@@ -55,6 +55,7 @@ import {
     loadPatternMarker,
     processFrame,
     trackMarker,
+    VERSION,
     type ARToolKitState,
     type MarkerPose,
     type ThresholdMode,
@@ -80,6 +81,12 @@ const THRESHOLD_MODES: ThresholdMode[] = ['manual', 'auto_median', 'auto_otsu', 
 const OUTLINE_COLOUR = '#00ff88';
 
 async function main(): Promise<void> {
+    // The library deliberately does not log on import, so identifying the build
+    // is the consumer's call. This is that call, and it is the reason the
+    // version is exported: when something misbehaves, the console says which
+    // copy of the detector was loaded.
+    console.log(`artoolkit5-ts v${VERSION}`);
+
     const stage = getStage();
     const video = await startCamera(stage);
 
@@ -203,6 +210,11 @@ function createFrameGrabber(video: HTMLVideoElement): () => Uint8ClampedArray | 
  * handed to `processFrame`, origin top-left — so drawing it needs no pose and
  * no projection matrix. That is the point of the field: an outline, a
  * hit-test or an occlusion mask costs nothing beyond the detection itself.
+ *
+ * The dot marks the marker's own top-left corner, resolved through `dir`. Turn
+ * the printed marker and it stays on the same printed corner while the outline
+ * rotates around it — which is the behaviour to check, and what marking
+ * `vertex[0]` instead would not give you.
  */
 function createOutlineDrawer(stage: HTMLElement): (marker: MarkerPose | undefined) => void {
     const canvas = document.createElement('canvas');
@@ -232,10 +244,11 @@ function createOutlineDrawer(stage: HTMLElement): (marker: MarkerPose | undefine
         context.lineWidth = 3;
         context.stroke();
 
-        // Corner 0 is marked because the ordering is rotation-dependent and is
-        // the part a consumer has to get right: see MarkerPose.vertex.
+        // The marker's own top-left, not `vertex[0]`. ARToolKit's mapping, the
+        // one it feeds its pose solver: see MarkerPose.vertex.
+        const [cornerX, cornerY] = marker.vertex[(4 - marker.dir) % 4];
         context.beginPath();
-        context.arc(startX, startY, 5, 0, Math.PI * 2);
+        context.arc(cornerX, cornerY, 5, 0, Math.PI * 2);
         context.fillStyle = OUTLINE_COLOUR;
         context.fill();
     };

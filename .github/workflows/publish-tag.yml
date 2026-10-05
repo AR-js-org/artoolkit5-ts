@@ -1,0 +1,204 @@
+name: Publish tag
+
+# The recovery path for a release that failed at its last step.
+#
+# `release.yml` orders the irreversible step last, so a failure there leaves the
+# version commit, the tag and the GitHub Release pushed with only the package
+# missing. That state cannot be recovered by re-running it: `prepare` aborts
+# because the tag already exists, and re-running the `release` job alone fails
+# because it rebuilds a release commit on top of a `main` that has since moved.
+# Both guards are correct and neither should be loosened — what was missing is a
+# third route that publishes an already-tagged, already-released version.
+#
+# This does only the publish. No commit, no tag, no changelog promotion, so it
+# is safe to run against a tag that is already released, and it keeps provenance
+# — which is the whole reason not to fall back to publishing by hand. 0.2.0 and
+# 0.2.1 were both finished by hand and neither carries an attestation.
+#
+# Requires its own trusted publisher on npmjs.com. npm authorises a publish per
+# workflow filename, and the existing entry names `release.yml`, so this file
+# needs a second entry (a package may have up to ten) naming `publish-tag.yml`.
+# Without it the publish is rejected no matter how correct the rest is.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to publish, e.g. v0.2.0'
+        required: true
+        type: string
+
+# Two publishes of the same package at once would race on the registry. Never
+# `cancel-in-progress`: cancelling a run that has already published leaves a
+# version on npm that npm will not let be replaced.
+concurrency:
+  group: publish-tag
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Reading the tagged tree, and the GitHub Release that proves it is one.
+      contents: read
+      # Mints the OIDC token npm authenticates with. There is no npm token in
+      # this workflow, so without this the publish cannot authenticate at all.
+      id-token: write
+
+    env:
+      # Read through the environment rather than interpolated into `run:`.
+      # `${{ }}` substitution happens before the shell parses anything, so a
+      # dispatch input spliced into a script is executed as code.
+      TAG: ${{ inputs.tag }}
+
+    steps:
+      # Before the checkout, so an unusable input is rejected without having
+      # fetched anything. Matched with bash's own `=~` rather than piped through
+      # grep: grep is line-oriented, so a multi-line value matches on its first
+      # line and passes.
+      - name: Validate the tag name
+        run: |
+          TAGPATTERN='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if ! [[ "$TAG" =~ $TAGPATTERN ]]; then
+            echo "::error::'$TAG' is not a release tag. Expected vX.Y.Z, optionally with a prerelease suffix."
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      # `refs/tags/` fully qualified, deliberately. An unqualified ref lets
+      # `checkout` resolve a *branch* of the same name, and the manifest check
+      # below compares only text — so a branch named `v0.3.0` whose package.json
+      # says 0.3.0 would satisfy it and reach the publish with this workflow's
+      # trusted-publishing authority. Naming the tag namespace makes a branch
+      # unreachable rather than merely unlikely.
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      # A tag alone says someone pushed a tag. A GitHub Release says a release
+      # ran and got as far as publishing one, which is the situation this
+      # workflow exists for. Checked before installing anything, so an
+      # unapproved tag never reaches dependency installation or the registry.
+      #
+      # A release that failed earlier than the publish — at `Create the GitHub
+      # Release` — has a tag and no Release. That is a different recovery:
+      # create the Release first, then run this.
+      - name: Require a GitHub Release for the tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::No GitHub Release exists for $TAG. This workflow recovers a release that failed at the npm publish, which happens after the Release is created. If the release failed earlier, create the Release first."
+            exit 1
+          fi
+          echo "$TAG has a GitHub Release."
+
+      # 24.x, not the 22.x used for development: trusted publishing needs npm
+      # 11.5.1 or newer and Node 22.x still ships 10.9.x.
+      #
+      # `registry-url` is deliberately not set. It makes setup-node write an
+      # .npmrc line reading `_authToken=${NODE_AUTH_TOKEN}`; with no token in
+      # the environment that expands to empty, npm decides authentication is
+      # already configured and never performs the OIDC exchange, failing with
+      # 403 or ENEEDAUTH. registry.npmjs.org is npm's default anyway. See
+      # actions/setup-node#1551 and npm/documentation#1960 before adding it.
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The tag names what is being published, so a tag that disagrees with the
+      # manifest means the wrong tree. Refuse rather than publish something
+      # surprising under a version nobody asked for.
+      - name: Check the tag matches the manifest
+        run: |
+          ACTUAL="$(node -p "require('./package.json').version")"
+
+          if [ "$VERSION" != "$ACTUAL" ]; then
+            echo "::error::Tag $TAG implies version $VERSION but package.json says $ACTUAL. The tag does not point at that release's commit."
+            exit 1
+          fi
+          echo "Tag $TAG matches package.json $ACTUAL."
+
+      # npm refuses an existing version on its own, but it does so with an
+      # E403 that reads like an authentication failure — the wrong diagnosis to
+      # hand someone mid-incident. Checking first means a re-run says plainly
+      # that there is nothing to do.
+      - name: Check the version is not already published
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already on npm. Nothing to publish — this workflow is for a version that was tagged but never published."
+            exit 1
+          fi
+          echo "$NAME@$VERSION is unpublished."
+
+      # `npm publish` moves the `latest` dist-tag unless told otherwise, and
+      # this workflow can publish a version *older* than one already released —
+      # recovering 0.2.1 after 0.2.2 shipped, say. Left alone that would point
+      # `latest` backwards, so every plain `npm install` would fetch the older
+      # package. Decide the tag rather than inherit it.
+      #
+      # A prerelease never becomes `latest` either, whatever its number.
+      - name: Decide the dist-tag
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          LATEST="$(npm view "$NAME" version 2>/dev/null || true)"
+
+          if [ -z "$LATEST" ]; then
+            echo "Nothing published yet; $VERSION becomes latest."
+            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
+          elif printf '%s' "$VERSION" | grep -q -- '-'; then
+            echo "$VERSION is a prerelease; leaving latest at $LATEST."
+            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
+          elif npx --yes --quiet semver@7 "$VERSION" -r ">$LATEST" >/dev/null 2>&1; then
+            echo "$VERSION is newer than the published $LATEST; it becomes latest."
+            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
+          else
+            echo "$VERSION is older than the published $LATEST; leaving latest alone."
+            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
+          fi
+
+      # Run against the tagged tree rather than trusted because it was checked
+      # during the failed release: this builds in a fresh environment, and the
+      # tarball published below is the one produced here.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Show what would be published
+        run: npm pack --dry-run
+
+      # Authenticated by trusted publishing (OIDC), exactly as in `release.yml`.
+      # `--provenance` is absent for the same reason: publishing this way attests
+      # provenance on its own.
+      - name: Publish to npm
+        run: npm publish --access public --tag "$DIST_TAG"
+
+      - name: Summarise
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          {
+            echo "### Published $NAME@$VERSION from $TAG"
+            echo ""
+            echo "- npm: https://www.npmjs.com/package/$NAME/v/$VERSION"
+            echo "- dist-tag: \`$DIST_TAG\`"
+            echo ""
+            if [ "$DIST_TAG" = "latest" ]; then
+              echo "Recovery publish. This version is the newest, so \`latest\` now points at it."
+            else
+              echo "Recovery publish under \`$DIST_TAG\` rather than \`latest\`, because a newer version is already released. Remove the tag once it has served its purpose:"
+              echo ""
+              echo "    npm dist-tag rm $NAME $DIST_TAG"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
