@@ -225,7 +225,16 @@ export interface ARToolKitCore {
     getTransMatSquareCont(index: number, markerWidth: number): void;
     /** Byte offset into `HEAPF64` holding the most recent 3x4 pose. */
     getTransform(): number;
-    getCameraLens(): Float64Array;
+    /**
+     * The 4x4 projection matrix, as a plain array of sixteen numbers rather
+     * than a typed one. `ARToolKitCore::getCameraLens()` builds an
+     * `emscripten::val::array()` and fills it element by element, so what
+     * crosses into JS is boxed. This was declared `Float64Array` until #10, and
+     * {@link getCameraProjectionMatrix} passed it straight through, which is why
+     * the declaration is now written to the binding rather than to what callers
+     * would prefer. A zero-copy typed view is proposed in #77.
+     */
+    getCameraLens(): number[];
     /**
      * Recomputes the cached projection matrix `getCameraLens` returns, from
      * whatever `nearPlane`/`farPlane` currently hold. `setProjectionNearPlane`

@@ -40,16 +40,24 @@ const GL_MATRIX_LENGTH = 16;
  * Returns the camera projection matrix computed by ARToolKit from the loaded
  * `camera_para.dat`, accounting for real lens distortion.
  *
- * NOTE: unlike `getTransform`, which returns a heap pointer, this returns the
- * matrix directly. That asymmetry is unverified against the C++ source. See
- * "spike: verify what getCameraLens() actually returns":
- * https://github.com/AR-js-org/artoolkit5-ts/issues/10
+ * Unlike `getTransform`, which returns a heap pointer, the underlying binding
+ * returns the sixteen values themselves — but as a plain JS array, not a typed
+ * one: `ARToolKitCore::getCameraLens()` fills an `emscripten::val::array()`
+ * element by element. The conversion here is what makes the declared
+ * `Float64Array` true rather than aspirational (#10).
+ *
+ * The copy is deliberate and stays even once the binding returns a typed array
+ * (#77). A zero-copy view onto the Wasm heap would change under
+ * `setProjectionNearPlane`/`setProjectionFarPlane` plus
+ * `recalculateCameraLens`, detach if the heap grew, and let a consumer write
+ * into the core's own matrix. This is a setup-time value that callers keep, so
+ * sixteen doubles is the right price for it being a snapshot.
  *
  * @throws {ARToolKitError} if the state has been disposed.
  */
 export function getCameraProjectionMatrix(state: ARToolKitState): Float64Array {
     assertNotDisposed(state, 'getCameraProjectionMatrix');
-    return state.core.getCameraLens();
+    return new Float64Array(state.core.getCameraLens());
 }
 
 /**
