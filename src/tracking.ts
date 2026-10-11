@@ -51,6 +51,9 @@ const BYTES_TO_FLOAT64_INDEX_SHIFT = 3;
 /** ID reported by the detector for a square it could not identify. */
 const UNRECOGNISED_MARKER_ID = -1;
 
+/** Frames are RGBA, which is what the engine's video buffer is sized for. */
+const BYTES_PER_PIXEL = 4;
+
 /** The core computes luma itself, so no buffer is supplied. */
 const EMPTY_LUMA_BUFFER: number[] = [];
 const CONVERT_TO_LUMA = true;
@@ -136,8 +139,11 @@ function createTrackedMarker(id: number, markerWidth: number): TrackedMarkerStat
  * and can be retained as it is.
  *
  * @param videoFrame RGBA pixels matching the width and height the state was
- *   created with.
- * @throws {ARToolKitError} if the state has been disposed.
+ *   created with, so exactly `width * height * 4` bytes.
+ * @throws {ARToolKitError} if the state has been disposed, or if `videoFrame`
+ *   is not that size. A wrong-sized frame is rejected rather than detected on,
+ *   because the engine would otherwise re-detect the last frame it accepted and
+ *   this would keep reporting that frame's poses as current (#87).
  */
 export function processFrame(
     state: ARToolKitState,
@@ -157,7 +163,37 @@ export function processFrame(
 }
 
 function detectMarkersInFrame(state: ARToolKitState, videoFrame: Uint8ClampedArray): void {
-    state.core.passVideoData(videoFrame, EMPTY_LUMA_BUFFER, CONVERT_TO_LUMA);
+    // Checked here rather than left to the engine for two reasons: the message
+    // can name the numbers, and the engine's own rejection writes a console
+    // error we would be duplicating. Both paths below throw instead of
+    // returning an empty result, because an empty result reads as "every
+    // marker lost" — also wrong, and indistinguishable from the marker
+    // genuinely leaving the frame.
+    const expected = state.width * state.height * BYTES_PER_PIXEL;
+    if (videoFrame.length !== expected) {
+        throw new ARToolKitError(
+            `processFrame was given a frame of ${videoFrame.length} bytes, but this ` +
+            `ARToolKitState was created for ${state.width}x${state.height}, which is ` +
+            `${expected} bytes (${state.width} * ${state.height} * ${BYTES_PER_PIXEL}). ` +
+            'Pass RGBA pixels matching the size the state was created with, or create ' +
+            'a new state for the size you are actually capturing.'
+        );
+    }
+
+    // A backstop, not dead code: the guard above covers the only rejection the
+    // engine performs today, but `passVideoData` reports failure by return
+    // value and that is the contract to honour. Detecting on a rejected frame
+    // means re-detecting the last accepted one, so `processFrame` would report
+    // a stale pose as current every frame and never report the marker lost.
+    const accepted = state.core.passVideoData(videoFrame, EMPTY_LUMA_BUFFER, CONVERT_TO_LUMA);
+    if (accepted !== 0) {
+        throw new ARToolKitError(
+            `The engine rejected this frame (passVideoData returned ${accepted}) and wrote ` +
+            'nothing, so the video buffer still holds the previous frame. Detection was ' +
+            'not run, rather than run again on that stale frame.'
+        );
+    }
+
     state.core.detectMarker();
 }
 

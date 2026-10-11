@@ -544,3 +544,64 @@ describe('processFrame filtering', () => {
         expect(() => processFrame(state, FRAME)).toThrow(ARToolKitError);
     });
 });
+
+describe('processFrame frame size', () => {
+    // A frame one pixel short of what the state was created for. The mock is
+    // 2x2, so a valid frame is 16 bytes.
+    const SHORT_FRAME = new Uint8ClampedArray(12);
+
+    it('refuses a frame that is not width * height * 4 bytes', () => {
+        const { state } = createMockState();
+        expect(() => processFrame(state, SHORT_FRAME)).toThrow(ARToolKitError);
+    });
+
+    it('names both sizes, so the mismatch is actionable', () => {
+        const { state } = createMockState();
+        expect(() => processFrame(state, SHORT_FRAME)).toThrow(/12 bytes/);
+        expect(() => processFrame(state, SHORT_FRAME)).toThrow(/2x2/);
+        expect(() => processFrame(state, SHORT_FRAME)).toThrow(/16 bytes/);
+    });
+
+    // The regression this guard exists for. The engine writes nothing for a
+    // rejected frame, so detecting anyway re-detects the last frame it
+    // accepted: before the guard, this returned marker 7 with the previous
+    // frame's pose, indefinitely, and never reported it lost.
+    it('does not report the previous frame\'s poses when the size is wrong', () => {
+        const { state, calls } = createMockState({ visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+
+        expect(processFrame(state, FRAME).detected).toHaveLength(1);
+        const posesRead = calls.transMat.length + calls.transMatCont.length;
+
+        expect(() => processFrame(state, SHORT_FRAME)).toThrow(ARToolKitError);
+        // No further pose was read, so nothing from the stale frame was
+        // reported. Before the guard this returned the marker again, forever.
+        expect(calls.transMat.length + calls.transMatCont.length).toBe(posesRead);
+    });
+
+    it('leaves the state usable, so a correctly sized frame still tracks', () => {
+        const { state } = createMockState({ visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+
+        expect(() => processFrame(state, SHORT_FRAME)).toThrow(ARToolKitError);
+        expect(processFrame(state, FRAME).detected).toHaveLength(1);
+    });
+
+    it('accepts a frame matching a state created for another size', () => {
+        const { state } = createMockState({ width: 4, height: 3, visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+
+        expect(() => processFrame(state, FRAME)).toThrow(ARToolKitError);
+        expect(processFrame(state, new Uint8ClampedArray(48)).detected).toHaveLength(1);
+    });
+
+    it('refuses to detect when the engine rejects a correctly sized frame', () => {
+        // The length is right, so this is the engine declining for a reason
+        // this library did not anticipate — honoured through the return value.
+        const { state, calls } = createMockState({ rejectFrame: -1, visibleIds: [[MARKER_ID]] });
+        trackMarker(state, MARKER_ID);
+
+        expect(() => processFrame(state, FRAME)).toThrow(/passVideoData returned -1/);
+        expect(calls.transMat).toEqual([]);
+    });
+});
