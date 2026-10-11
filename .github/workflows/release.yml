@@ -47,9 +47,14 @@ on:
 # on the package rather than the workflow. Keep this string identical in both
 # files — that it matches is the whole mechanism (#82).
 #
+# Serialising is not queueing: a group holds one run and one pending run, and a
+# third request cancels the pending one and takes its place. See the longer note
+# in `publish-tag.yml`, and "Known failure modes" in MAINTAINERS.md.
+#
 # Never `cancel-in-progress`: cancelling a run that has already published leaves
-# a version on npm that npm will not let be replaced. Queueing is the only safe
-# behaviour.
+# a version on npm that npm will not let be replaced. Letting it finish is the
+# only safe behaviour — "queueing" would overclaim the same way the comment this
+# replaces did.
 concurrency:
   group: publish-${{ github.repository }}
   cancel-in-progress: false
