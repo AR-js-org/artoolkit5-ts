@@ -28,11 +28,31 @@ on:
         required: true
         type: string
 
-# Two publishes of the same package at once would race on the registry. Never
-# `cancel-in-progress`: cancelling a run that has already published leaves a
-# version on npm that npm will not let be replaced.
+# Two publishes of the same package at once would race on the registry, and the
+# other publisher is `release.yml`, not another run of this file. So the group is
+# shared with it and keyed on the package this repository publishes: a group per
+# workflow serialises a workflow only against itself, which was the wrong
+# mechanism for the right concern (#82). Keep this string identical in both
+# files — that it matches is the whole mechanism.
+#
+# It serialises; it does not queue, and the difference shows up at three
+# requests. A group holds one run in progress and one *pending* run, and a third
+# request takes the pending slot: "any existing pending job or workflow in the
+# same concurrency group will be canceled" (GitHub's workflow syntax reference).
+# So a waiting publish can be displaced by a later one and never reach its
+# publish step.
+#
+# Accepted rather than engineered around. A displaced run is cancelled before it
+# does anything, so nothing is published and nothing is left half-done; it shows
+# as cancelled in the Actions list, and re-requesting it is the entire recovery.
+# A durable dispatch queue would be real infrastructure for a case that needs
+# three overlapping publishes, and what it would replace — two publishes racing
+# over `latest` — fails silently and in the direction that hurts.
+#
+# Never `cancel-in-progress`: cancelling a run that has already published leaves
+# a version on npm that npm will not let be replaced.
 concurrency:
-  group: publish-tag
+  group: publish-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -129,40 +149,32 @@ jobs:
       # E403 that reads like an authentication failure — the wrong diagnosis to
       # hand someone mid-incident. Checking first means a re-run says plainly
       # that there is nothing to do.
+      #
+      # Which makes swallowing the lookup's own failure self-defeating: a
+      # transient registry error would read as "not published", the run would
+      # proceed, and npm would hand back the very E403 this step exists to
+      # pre-empt. So the three outcomes are kept apart. `npm view` exits 0 with
+      # the version on stdout when it is published, and exits non-zero with
+      # `E404` on stderr when it verifiably is not; anything else is a lookup
+      # that did not answer the question, and this stops rather than guesses.
       - name: Check the version is not already published
         run: |
           NAME="$(node -p "require('./package.json').name")"
-          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+          LOOKUP_ERROR="$(mktemp)"
+
+          if npm view "$NAME@$VERSION" version >/dev/null 2>"$LOOKUP_ERROR"; then
             echo "::error::$NAME@$VERSION is already on npm. Nothing to publish — this workflow is for a version that was tagged but never published."
             exit 1
           fi
-          echo "$NAME@$VERSION is unpublished."
 
-      # `npm publish` moves the `latest` dist-tag unless told otherwise, and
-      # this workflow can publish a version *older* than one already released —
-      # recovering 0.2.1 after 0.2.2 shipped, say. Left alone that would point
-      # `latest` backwards, so every plain `npm install` would fetch the older
-      # package. Decide the tag rather than inherit it.
-      #
-      # A prerelease never becomes `latest` either, whatever its number.
-      - name: Decide the dist-tag
-        run: |
-          NAME="$(node -p "require('./package.json').name")"
-          LATEST="$(npm view "$NAME" version 2>/dev/null || true)"
-
-          if [ -z "$LATEST" ]; then
-            echo "Nothing published yet; $VERSION becomes latest."
-            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
-          elif printf '%s' "$VERSION" | grep -q -- '-'; then
-            echo "$VERSION is a prerelease; leaving latest at $LATEST."
-            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
-          elif npx --yes --quiet semver@7 "$VERSION" -r ">$LATEST" >/dev/null 2>&1; then
-            echo "$VERSION is newer than the published $LATEST; it becomes latest."
-            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
-          else
-            echo "$VERSION is older than the published $LATEST; leaving latest alone."
-            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
+          if ! grep -q 'E404' "$LOOKUP_ERROR"; then
+            echo "::error::Could not establish whether $NAME@$VERSION is already published. The registry lookup failed for a reason other than the version being absent, so this run cannot tell 'unpublished' from 'unreachable'. Re-run once the registry is reachable."
+            echo "npm view wrote:"
+            cat "$LOOKUP_ERROR"
+            exit 1
           fi
+
+          echo "$NAME@$VERSION is unpublished."
 
       # Run against the tagged tree rather than trusted because it was checked
       # during the failed release: this builds in a fresh environment, and the
@@ -178,6 +190,58 @@ jobs:
 
       - name: Show what would be published
         run: npm pack --dry-run
+
+      # `npm publish` moves the `latest` dist-tag unless told otherwise, and
+      # this workflow can publish a version *older* than one already released —
+      # recovering 0.2.1 after 0.2.2 shipped, say. Left alone that would point
+      # `latest` backwards, so every plain `npm install` would fetch the older
+      # package. Decide the tag rather than inherit it.
+      #
+      # Deliberately the last step before the publish, not an early fail-fast
+      # check. It reads the registry and the next step acts on what it read, so
+      # every minute between the two is a minute in which a concurrent release
+      # can move `latest` and invalidate the answer (#82). Nothing is lost by
+      # moving it here: the decision cannot fail the run on the input, so it was
+      # never doing fail-fast work. What does belong early — whether this
+      # version is already published — stays early, above.
+      - name: Decide the dist-tag
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          LOOKUP_ERROR="$(mktemp)"
+          PUBLISHED=yes
+
+          # Three outcomes, kept apart. An empty result from a swallowed error
+          # used to be indistinguishable from a package with nothing published,
+          # and that branch assigns `latest` — so a registry blip while
+          # recovering an old version was enough to point `latest` backwards,
+          # the one thing this step exists to prevent (#81).
+          if ! LATEST="$(npm view "$NAME" version 2>"$LOOKUP_ERROR")"; then
+            if grep -q 'E404' "$LOOKUP_ERROR"; then
+              PUBLISHED=no
+            else
+              echo "::error::Could not read the current latest version of $NAME. The registry lookup failed for a reason other than the package being absent, so this run cannot tell 'nothing published yet' from 'registry unreachable' — and getting that wrong points latest at an older version. Re-run once the registry is reachable."
+              echo "npm view wrote:"
+              cat "$LOOKUP_ERROR"
+              exit 1
+            fi
+          fi
+
+          # Before the no-published-version branch, not after it. The other
+          # order let a prerelease take `latest` whenever the lookup came back
+          # empty, which this step's own comment claimed could not happen (#81).
+          if printf '%s' "$VERSION" | grep -q -- '-'; then
+            echo "$VERSION is a prerelease; it never becomes latest."
+            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
+          elif [ "$PUBLISHED" = no ]; then
+            echo "$NAME has no published version; $VERSION becomes latest."
+            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
+          elif npx --yes --quiet semver@7 "$VERSION" -r ">$LATEST" >/dev/null 2>&1; then
+            echo "$VERSION is newer than the published $LATEST; it becomes latest."
+            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
+          else
+            echo "$VERSION is not newer than the published $LATEST; leaving latest alone."
+            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
+          fi
 
       # Authenticated by trusted publishing (OIDC), exactly as in `release.yml`.
       # `--provenance` is absent for the same reason: publishing this way attests
