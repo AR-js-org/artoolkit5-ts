@@ -256,7 +256,22 @@ export interface MarkerInfo {
  */
 export interface ARToolKitCore {
     setup(width: number, height: number, cameraId: number): Promise<void>;
-    passVideoData(frame: Uint8ClampedArray, lumaBuffer: number[], convertToLuma: boolean): void;
+    /**
+     * Copies a frame into the engine's video buffer.
+     *
+     * Returns `0` on success and a negative value when the frame was rejected,
+     * in which case **nothing was written** and the buffer still holds the last
+     * frame that was accepted. The binding has always returned an `int`; this
+     * was declared `void` until #87, which is why the rejection went unnoticed.
+     *
+     * `artoolkit5-wasm` 0.4.2 (wasm#51, for wasm#10) is what made rejection
+     * possible: a frame that is not exactly `width * height * 4` bytes now
+     * returns `-1` instead of being copied past the end of the buffer.
+     *
+     * @param frame RGBA pixels, exactly `width * height * 4` bytes for the
+     *   size the core was set up with.
+     */
+    passVideoData(frame: Uint8ClampedArray, lumaBuffer: number[], convertToLuma: boolean): number;
     detectMarker(): void;
     getMarkerNum(): number;
     getMarkerInfo(index: number): MarkerInfo;

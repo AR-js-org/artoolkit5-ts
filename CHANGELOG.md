@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`processFrame` no longer detects on a stale frame.** A frame that is not
+  exactly `width * height * 4` bytes for the size the state was created with is
+  now rejected with an `ARToolKitError` naming both sizes. Closes #87.
+
+  `passVideoData` writes nothing for a frame it refuses, leaving the engine's
+  video buffer holding the last frame it accepted. `detectMarkersInFrame`
+  ignored its return value and called `detectMarker()` regardless, so every
+  subsequent call re-detected that one frame: `processFrame` reported its poses
+  as current, frame after frame, and never reported the markers as `lost`. AR
+  content froze on a stale pose with nothing in the result to say so.
+
+  The size is checked here rather than left to the engine, which lets the
+  message name the numbers and avoids duplicating the console error the engine
+  writes. `passVideoData`'s return value is honoured too, for a refusal this
+  library does not anticipate.
+
+  **This throws where 0.3.0 silently misbehaved.** A caller already meeting the
+  documented contract — "RGBA pixels matching the width and height the state was
+  created with" — sees no change. A caller passing a wrong-sized frame was
+  getting stale poses and now gets an error, which is the point.
+
+- **`ARToolKitCore.passVideoData` is declared as returning `number`**, not
+  `void`. The binding has always returned an `int`; the declaration said
+  otherwise, which is why the rejection could go unnoticed.
+
+### Changed
+
+- **`@ar-js-org/artoolkit5-wasm` raised to `^0.4.2`** from `^0.4.0`. Closes #88.
+
+  0.4.2 ([wasm#51](https://github.com/AR-js-org/artoolkit5-wasm/pull/51), for
+  [wasm#10](https://github.com/AR-js-org/artoolkit5-wasm/issues/10)) is what
+  makes `passVideoData` reject a wrong-sized frame instead of copying it past
+  the end of the engine's buffer. Raising the floor rather than merely
+  permitting it: the fix above assumes the frame is not written when it is
+  refused, and on 0.4.0 or 0.4.1 it would be.
+
+  0.4.1 also carried
+  [wasm#43](https://github.com/AR-js-org/artoolkit5-wasm/pull/43), which exports
+  `dist/artoolkit5.wasm` so bundlers can import its URL — the path the examples
+  here already take through `?url`.
+
 ## [0.3.0] - 2026-10-05
 
 ### Added
