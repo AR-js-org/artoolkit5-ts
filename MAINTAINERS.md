@@ -9,54 +9,90 @@ that might.
 
 ## The release in one paragraph
 
-Releases are cut by dispatching the **Release** workflow by hand, from `main`,
-with a version number. The workflow does everything else: bumps `package.json`,
-promotes the changelog, builds, commits, tags, creates the GitHub Release and
-publishes to npm. You do not perform any of those steps yourself.
+**Pushing the tag is the release.** The version bump and the changelog come in
+through an ordinary pull request into `dev`, that reaches `main` through the
+usual release PR, and pushing `vX.Y.Z` on the merge commit triggers the
+**Release** workflow, which creates the GitHub Release and publishes to npm.
+Nothing pushes to a branch on your behalf.
+
+This is the process every AR-js-org package follows
+([arjs-dev-tools#8](https://github.com/AR-js-org/arjs-dev-tools/issues/8)),
+with `arjs-plugin-artoolkit` as its reference. It replaced a dispatch that
+committed the bump and pushed it straight to `main`, which is why `main` here
+could not carry the pull-request rule the other repositories have (#22, #86).
 
 ## Cutting a release
 
-1. **Get the work onto `main`.** Open a PR from `dev` to `main` titled
-   `Release X.Y.Z`. This is the one PR that targets `main`; everything else
-   targets `dev`.
-
-2. **Merge it with a merge commit.** Not squash, and preferably not rebase —
-   see [Merge strategy](#merge-strategy-for-dev--main) for why each matters.
-
-3. **Dispatch the Release workflow** from `main`, with the version without a
-   leading `v`:
+1. **Prepare the release on a branch off `dev`**, as you would any change:
 
    ```bash
-   gh workflow run release.yml --repo AR-js-org/artoolkit5-ts --ref main -f version=X.Y.Z
+   git switch dev && git pull
+   git switch -c release/X.Y.Z
+   npm version X.Y.Z --no-git-tag-version
+   node scripts/promote-changelog.mjs X.Y.Z
    ```
 
-   Add `-f dry_run=true` to run every check and stop before anything is pushed
-   or published.
+   `npm version` writes `package.json` and `package-lock.json`;
+   `promote-changelog.mjs` renames `## [Unreleased]` to `## [X.Y.Z] - <today>`,
+   opens a fresh empty `[Unreleased]` above it and rewrites the compare links at
+   the bottom. Commit both as `chore(release): X.Y.Z` and open the PR into
+   `dev`.
 
-4. **Re-sync `dev` from `main`** once it succeeds. See
+2. **Check it would release cleanly**, before going near `main`. The Release
+   workflow has a dispatch that runs every check and cannot publish anything:
+
+   ```bash
+   gh workflow run release.yml --repo AR-js-org/artoolkit5-ts --ref release/X.Y.Z
+   ```
+
+   See [Verification runs](#verification-runs-and-what-they-cannot-tell-you).
+
+3. **Merge to `dev`, then open the release PR from `dev` to `main`.** This is
+   the one PR that targets `main`; everything else targets `dev`.
+
+4. **Merge it with a merge commit.** Not squash, and preferably not rebase —
+   see [Merge strategy](#merge-strategy-for-dev--main) for why each matters.
+
+5. **Tag the merge commit on `main` and push the tag.** This is the step that
+   releases:
+
+   ```bash
+   git switch main && git pull
+   git tag -a vX.Y.Z -m "Release X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+   The workflow refuses a tag whose version disagrees with `package.json`, and
+   one that is not an ancestor of `origin/main`.
+
+6. **Re-sync `dev` from `main`** once it succeeds. See
    [After a release](#after-a-release).
 
 ## Things you must not do by hand
 
-**Do not create the tag.** The workflow creates an annotated tag itself, on the
-`chore(release): X.Y.Z` commit that it also creates. A hand-made tag causes two
-problems at once: nothing happens when you push it, because **Release** is
-`workflow_dispatch:` only and has no tag trigger; and the next dispatch fails
-outright, because validation refuses to run when `refs/tags/vX.Y.Z` already
-exists. A hand-made tag also points at the wrong commit — the release commit
-does not exist until the workflow makes it, so the tag lands on a tree where
-`package.json` still carries the previous version.
+**Do not push the tag before the version commit is on `main`.** The tag is the
+trigger, so pushing it early starts a release against a tree whose
+`package.json` still carries the previous version. The workflow refuses that
+rather than publishing it, and refuses a tag that is not an ancestor of
+`origin/main` — but a pushed tag then has to be deleted locally and remotely
+before it can be re-pushed, which is avoidable noise.
 
-**Do not promote the changelog by hand.** `scripts/promote-changelog.mjs`
-refuses to run when `CHANGELOG.md` already contains a `## [X.Y.Z]` section, so
-adding one yourself fails `prepare` before it does anything. Leave the entries
-under `## [Unreleased]`; the workflow renames that heading, opens a fresh empty
-one above it and rewrites the link definitions at the bottom.
+**Do not publish from your machine.** `npm publish` by hand produces a release
+with no provenance attestation, and it cannot be added afterwards: 0.2.0 and
+0.2.1 carry none, because both were finished by hand after the workflow's
+publish failed. If the workflow's publish fails, the recovery path is
+[`publish-tag.yml`](#publishing), which keeps provenance.
 
-**Do not commit `dist/`.** It is gitignored and built during `prepare`. The
-built tree is handed to the `release` job as a build artifact rather than
-rebuilt there, so the tarball that `npm pack --dry-run` reports on is the one
-that actually gets published.
+**Do not commit `dist/`.** It is gitignored and built during `verify`. The built
+tree is handed to the `release` job as a build artifact rather than rebuilt
+there, so the tarball that `npm pack --dry-run` reports on is the one that
+actually gets published.
+
+**Do not promote the changelog twice.** `scripts/promote-changelog.mjs` refuses
+to run when `CHANGELOG.md` already contains a `## [X.Y.Z]` section, which is
+what makes running it a safe step to repeat. Promoting it *is* now your job —
+see [Cutting a release](#cutting-a-release) — because CI no longer touches the
+changelog at all.
 
 ## Merge strategy for `dev` → `main`
 
@@ -75,10 +111,13 @@ continue to share history.
 
 ## After a release
 
-The `chore(release): X.Y.Z` commit is pushed to `main` only, so `dev` is left
-behind by at least that commit, with a stale version in its `package.json`.
-Re-sync it before starting the next branch, or that branch begins from a tree
-that thinks it is on the previous version.
+`main` has the release PR's merge commit, which `dev` does not, so the two have
+diverged by at least that commit. Re-sync `dev` before starting the next branch.
+
+Less pressing than it was: the `chore(release): X.Y.Z` commit now lands on `dev`
+first, so `dev`'s `package.json` is already the released version and a branch cut
+from it no longer thinks it is on the previous one. The merge commit still has to
+come across.
 
 When `dev` and `main` share history, this is a fast-forward:
 
@@ -96,16 +135,27 @@ git checkout dev && git reset --hard origin/main && git push --force-with-lease 
 
 ## Preconditions the workflow enforces
 
-`prepare` checks all of these and stops before changing anything if one fails:
+`verify` runs for both triggers and nothing survives it, so a failure there has
+released nothing:
 
 | Check | Fails when |
 | --- | --- |
-| Run from `main` | dispatched from any other branch |
-| Version is valid semver | malformed, or carries a leading `v` |
-| Tag does not exist | `vX.Y.Z` was created by hand |
-| Repository is public | npm cannot generate provenance from a private repo |
-| Version not on npm | that version was already published — npm never allows a replacement |
+| Tag names a version | the tag is not `vX.Y.Z`, optionally with a prerelease suffix |
+| Tag matches `package.json` | the tag points at a commit carrying a different version |
+| Tag is on `main` | the tag is not an ancestor of `origin/main` |
 | Typecheck, test, build | any of the three fails |
+| Release notes exist | there are no commits since the previous tag |
+
+`release` adds two more, before the Release is created:
+
+| Check | Fails when |
+| --- | --- |
+| Repository is public | npm cannot generate provenance from a private repo |
+| Version not on npm | that version was already published, **or** the registry lookup could not answer (#81) |
+
+The first three in `verify` only apply to a tag push; a dispatch has no tag to
+check. That is decided inside one shell script rather than through step-level
+`if:` conditions, deliberately — see the comments in the workflow.
 
 ## Publishing
 
@@ -120,11 +170,11 @@ Three consequences worth knowing:
 
 - **Provenance is automatic.** `--provenance` is not passed, and should not be:
   publishing this way attests provenance on its own.
-- **The `release` job runs Node 24.x while `prepare` runs 22.x.** That is not
-  an oversight. Trusted publishing needs npm 11.5.1 or newer, and Node 22.x
-  still ships npm 10.9.x. Nothing is built in `release` — it publishes a tree
-  `prepare` already built and handed over — so the two jobs do not need to
-  agree on a Node version.
+- **Both jobs run Node 24.x, and 22.x will not do.** Trusted publishing needs
+  npm 11.5.1 or newer, and Node 22.x still ships npm 10.9.x; Node 24.x ships
+  11.19.x. `verify` used to run 22.x, which was harmless while only `release`
+  published — but there is no reason for the tree to be built on a different
+  major from the one that publishes it.
 - **The `release` job must not set `registry-url` on `actions/setup-node`.**
   It makes setup-node write an `.npmrc` line reading
   `_authToken=${NODE_AUTH_TOKEN}`. With no token in the environment that
@@ -245,39 +295,53 @@ exists, and the changelog has already been promoted. Recovering that way would
 mean deleting the tag, deleting the GitHub Release and reverting the release
 commit — which is why the publish-only workflow exists instead.
 
-### The push to `main` is rejected
+### The tag is rejected
 
-`main` is not protected today, so this cannot happen yet. When it does, the
-error names the two causes, which need opposite responses: a non-fast-forward
-means something landed on `main` after the run started and the workflow should
-be re-run against the new tip; a protection rejection means `main` now blocks
-direct pushes. See [Open items](#open-items).
+Three messages, three different mistakes, and none of them has released
+anything:
 
-The branch push is deliberately ordered before the tag push, so a rejection
-leaves nothing tagged and nothing published, and the run can simply be retried.
+- **"does not name a version"** — the tag is not `vX.Y.Z`. Delete it and push
+  the right one.
+- **"implies version X but package.json says Y"** — the tag is on the wrong
+  commit, almost always one before the version bump landed. Delete it, and tag
+  the merge commit on `main`.
+- **"is not an ancestor of origin/main"** — the tag is on a branch. Delete it,
+  get the release PR merged, and tag there.
 
-## Dry runs, and what they cannot tell you
+In each case: `git tag -d vX.Y.Z && git push --delete origin vX.Y.Z`, then
+push the corrected tag. Re-pushing a moved tag without deleting it needs
+`--force`, which the ruleset does not block for tags but which leaves anyone
+who already fetched it holding the old one.
 
-`dry_run: true` runs `prepare` in full and skips `release` entirely, as a whole
-job rather than step by step. That covers every check, the version bump, the
-changelog promotion, the build and the packed tarball.
+## Verification runs, and what they cannot tell you
 
-It cannot cover anything in `release`, because that job does not run: the
-commit, the tag, the push to `main`, the GitHub Release and the npm publish are
-all unexercised. A dry run passing tells you the release is *prepared*
-correctly, not that it will *publish* correctly — which is exactly why the npm
-403 above was never caught before a real release.
+A `workflow_dispatch` of **Release** runs `verify` in full and skips `release`
+entirely — as a whole job, on the event rather than on an input. That covers
+every check, the build, the release notes and the packed tarball.
 
-That gap is now survivable rather than closed. The publish still cannot be
-rehearsed, but a failure at that step no longer needs improvising: the recovery
-publish is a workflow that was written in advance, which is the whole point of
-having it ready before the release that needs it.
+It cannot cover anything in `release`, because that job does not exist for a
+dispatch: the GitHub Release and the npm publish are unexercised. A clean
+verification tells you the tree is *releasable*, not that it will *publish*
+correctly — which is exactly why the npm 403 above was never caught before a
+real release.
+
+What changed is that the dispatch can no longer publish **by construction**
+rather than by remembering a flag. The old `dry_run: false` default meant a
+dispatch without the flag was a real release; now a dispatch is never one, and
+the only way to publish is to push a tag. That removes the failure mode #22 was
+opened about: a step added to `release` without its own `if:`.
+
+The publish still cannot be rehearsed. A failure there no longer needs
+improvising, though — [`publish-tag.yml`](#publishing) is the recovery path, and
+it keeps provenance.
 
 ## Open items
 
-- **[#22](https://github.com/AR-js-org/artoolkit5-ts/issues/22), part 2** —
-  when `main` is eventually protected, the workflow's push will be rejected
-  unless `github-actions[bot]` is exempted. The alternative, restructuring the
-  workflow to open a pull request and tag once it merges, would turn an
-  explicit dispatch into publish-on-merge and is not recommended. Part 1 of
-  that issue, dry-run safety, was resolved structurally in #43.
+- **The `pull_request` rule on `main`.** Nothing pushes to `main` from a
+  workflow any more, so ruleset `24843561` ("Protect main branch", currently
+  `deletion` and `non_fast_forward` only) can gain the pull-request rule the
+  other AR-js-org repositories have. That is the last box in
+  [arjs-dev-tools#8](https://github.com/AR-js-org/arjs-dev-tools/issues/8) for
+  this repository, and it needs doing **after** the first tag-triggered release
+  has run, not before — so that a problem with the new flow can still be fixed
+  by pushing to `main`.
