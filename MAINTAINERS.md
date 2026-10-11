@@ -240,9 +240,12 @@ That decision is the **last** step before the publish, not an early check. It
 reads the registry and the next step acts on what it read, so any gap between
 the two is a gap in which a normal release can move `latest` and invalidate the
 answer. Both workflows also share one non-cancelling concurrency group,
-`publish-<owner>/<repo>`, so a recovery publish and a normal release queue
-behind each other rather than racing (#82). The shared group is the exclusion;
-deciding late is what makes the step correct even without it.
+`publish-<owner>/<repo>`, so a recovery publish and a normal release cannot run
+at the same time (#82) — though sharing a group serialises rather than queues,
+which is its own wrinkle: see
+[A publish run was cancelled before it started](#a-publish-run-was-cancelled-before-it-started).
+The shared group is the exclusion; deciding late is what makes the step correct
+even without it.
 
 > [!IMPORTANT]
 > This needs **its own trusted publisher** on npmjs.com. npm authorises a
