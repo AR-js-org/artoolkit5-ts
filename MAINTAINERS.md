@@ -151,6 +151,29 @@ its own entry — a package may have up to ten:
 
 ## Known failure modes
 
+### A publish run was cancelled before it started
+
+Not an error, and nothing was published. **Release** and **Publish tag** share
+one concurrency group so they cannot publish at the same time (#82), and a
+concurrency group holds one run in progress plus one *pending* run — no more.
+GitHub's workflow syntax reference puts it plainly: "any existing `pending` job
+or workflow in the same concurrency group will be canceled".
+
+So with three publishes in flight, the one waiting in the middle is displaced by
+the newest and never reaches its publish step. It appears in the Actions list as
+cancelled, with no steps run.
+
+Recovery is to request it again once the queue is clear. Nothing needs undoing,
+because a displaced run is cancelled before it does anything.
+
+This is a deliberate trade rather than an oversight. The alternative — a group
+per workflow, which is what this repository had — let a recovery publish and a
+normal release run at the same time and point `latest` at whichever finished
+last. That failure is silent and affects every `npm install`; this one is
+visible and costs a re-dispatch. A durable dispatch queue would remove it
+properly, and is not worth building for a case that needs three overlapping
+publishes.
+
 ### `403 Two-factor authentication is required ... but an automation token was specified`
 
 **This should no longer happen.** The workflow no longer authenticates with a

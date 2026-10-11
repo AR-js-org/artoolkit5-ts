@@ -35,6 +35,20 @@ on:
 # mechanism for the right concern (#82). Keep this string identical in both
 # files — that it matches is the whole mechanism.
 #
+# It serialises; it does not queue, and the difference shows up at three
+# requests. A group holds one run in progress and one *pending* run, and a third
+# request takes the pending slot: "any existing pending job or workflow in the
+# same concurrency group will be canceled" (GitHub's workflow syntax reference).
+# So a waiting publish can be displaced by a later one and never reach its
+# publish step.
+#
+# Accepted rather than engineered around. A displaced run is cancelled before it
+# does anything, so nothing is published and nothing is left half-done; it shows
+# as cancelled in the Actions list, and re-requesting it is the entire recovery.
+# A durable dispatch queue would be real infrastructure for a case that needs
+# three overlapping publishes, and what it would replace — two publishes racing
+# over `latest` — fails silently and in the direction that hurts.
+#
 # Never `cancel-in-progress`: cancelling a run that has already published leaves
 # a version on npm that npm will not let be replaced.
 concurrency:
