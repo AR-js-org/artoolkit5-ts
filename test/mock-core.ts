@@ -94,6 +94,22 @@ export interface MockCoreOptions {
      * to the identity for, so a default of 0 would hide a missing rotation.
      */
     dir?: { pattern?: number; matrix?: number };
+    /**
+     * Frame dimensions the state reports. Default 2x2, so a valid frame is 16
+     * bytes — see the comment at the assignment. Set these to make a frame of a
+     * given length the wrong size.
+     */
+    width?: number;
+    height?: number;
+    /**
+     * What `passVideoData` returns, when something other than acceptance is
+     * wanted. The real binding answers `-1` for a frame it refused to copy.
+     *
+     * Only reachable with a frame of the right length, since the library checks
+     * the length itself first; that is the point — it covers the engine
+     * refusing a frame for a reason this library does not know about.
+     */
+    rejectFrame?: number;
 }
 
 /**
@@ -163,6 +179,12 @@ export function createMockState(options: MockCoreOptions = {}): {
                 // One frame advance per processFrame call; this is the first
                 // core call the library makes, so it is the natural hook.
                 frame += 1;
+                // `0` is acceptance. Returning it rather than `undefined`
+                // matters: the library now refuses to detect on a frame the
+                // engine rejected, so a mock that returned nothing would make
+                // every detection test fail for the wrong reason. `rejectFrame`
+                // is how a test asks for the rejection path instead.
+                return options.rejectFrame ?? 0;
             },
             detectMarker: () => undefined,
             getMarkerNum: () => currentIds().length,
@@ -238,8 +260,12 @@ export function createMockState(options: MockCoreOptions = {}): {
                 calls.delete += 1;
             },
         },
-        width: 640,
-        height: 480,
+        // Deliberately tiny. `processFrame` now requires a frame of exactly
+        // `width * height * 4` bytes, and a 640x480 mock would make every test
+        // allocate 1.2 MB to say nothing about tracking. 2x2 keeps a valid
+        // frame at 16 bytes; no test reads these as pixel dimensions.
+        width: options.width ?? 2,
+        height: options.height ?? 2,
         patternMarkers: {},
         barcodeMarkers: {},
         minConfidence: { pattern: 0, barcode: 0 },
