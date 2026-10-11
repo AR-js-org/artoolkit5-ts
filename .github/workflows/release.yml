@@ -29,12 +29,17 @@ on:
         default: false
         type: boolean
 
-# Two releases running at once would race over the tag and the branch push.
+# Two releases running at once would race over the tag and the branch push, and
+# a release racing a recovery publish would race over the `latest` dist-tag. The
+# group is therefore shared with `publish-tag.yml` and keyed on the package this
+# repository publishes, not on the workflow: a group per workflow serialises a
+# workflow only against itself, which is not the hazard (#82).
+#
 # Never `cancel-in-progress` here: cancelling a run that has already published
 # leaves a version on npm with no tag and no Release behind it, and npm will not
 # let that version be replaced. Queueing is the only safe behaviour.
 concurrency:
-  group: release
+  group: publish-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:

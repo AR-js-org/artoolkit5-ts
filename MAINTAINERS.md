@@ -184,7 +184,8 @@ It does only the publish — no commit, no tag, no changelog promotion — so it
 safe against a tag that is already released. Crucially it publishes **with
 provenance**, which is the whole reason not to fall back to doing it by hand.
 
-What it refuses, before installing anything or reaching the registry:
+What it refuses, each as early as the check can be made — the first three before
+it fetches anything, the rest before it builds:
 
 - a tag that is not `vX.Y.Z`, so a branch name cannot be passed as one
 - a ref outside `refs/tags/`, so a *branch* called `v0.3.0` cannot stand in for
@@ -194,6 +195,11 @@ What it refuses, before installing anything or reaching the registry:
 - a tag whose name disagrees with `package.json`, meaning the wrong tree
 - a version already on npm, so a re-run says so plainly instead of hitting npm's
   E403, which reads like an authentication failure
+- a registry lookup that did not answer. "Not published" and "registry
+  unreachable" are different facts, and `npm view` distinguishes them: it exits
+  non-zero with `E404` only for a genuine absence. Treating any failure as an
+  absence is what let a network blip point `latest` at an older version (#81),
+  so an unanswered lookup stops the run instead.
 
 **It chooses the dist-tag rather than inheriting it.** `npm publish` moves
 `latest` unless told otherwise, and this workflow can publish a version *older*
@@ -206,6 +212,14 @@ newest. The run summary says which it chose, and how to remove the extra tag:
 ```bash
 npm dist-tag rm @ar-js-org/artoolkit5-ts recovered
 ```
+
+That decision is the **last** step before the publish, not an early check. It
+reads the registry and the next step acts on what it read, so any gap between
+the two is a gap in which a normal release can move `latest` and invalidate the
+answer. Both workflows also share one non-cancelling concurrency group,
+`publish-<owner>/<repo>`, so a recovery publish and a normal release queue
+behind each other rather than racing (#82). The shared group is the exclusion;
+deciding late is what makes the step correct even without it.
 
 > [!IMPORTANT]
 > This needs **its own trusted publisher** on npmjs.com. npm authorises a
