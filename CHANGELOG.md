@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`disposeARToolKitState` no longer crashes.** It called `teardown()` and then
+  `delete()`; it now calls `delete()` alone. Closes #90.
+
+  `delete()` runs the C++ destructor and `~ARToolKitCore()` calls `teardown()`
+  itself, so the handles are freed either way — the extra call was based on the
+  belief that `delete()` alone would leak them, which the destructor disproves.
+  Calling both aborted the Emscripten module: `teardown()` ends with
+  `arPattDeleteHandle(this->arPattHandle)` and never nulls the member, so the
+  destructor's pass hands back a freed pointer. `arPattDeleteHandle` does guard
+  against `NULL`, but its closing `pattHandle = NULL` assigns the parameter
+  rather than the caller's pointer, so the guard cannot see a stale one.
+
+  Reproduced with no markers registered and no frame processed — create and
+  dispose was enough — and on 0.4.0 as well as 0.4.2, so it is not a regression
+  from the dependency bump. Upstream fix tracked as
+  [artoolkit5-wasm#48](https://github.com/AR-js-org/artoolkit5-wasm/issues/48);
+  calling `delete()` alone is correct whether or not that lands.
+
+  **What this did and did not break.** The `abort()` destroyed the module
+  instance belonging to that state, and `createARToolKitState` instantiates a
+  module per state, so an application that disposed and then created another
+  state kept working. The dispose call itself threw a `RuntimeError`, out of a
+  function whose only job is cleanup, leaving the instance's own deallocation
+  half-done.
+
 - **`processFrame` no longer detects on a stale frame.** A frame that is not
   exactly `width * height * 4` bytes for the size the state was created with is
   now rejected with an `ARToolKitError` naming both sizes. Closes #87.
