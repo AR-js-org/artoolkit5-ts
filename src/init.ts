@@ -32,7 +32,7 @@
  */
 
 import { createARToolKit, loadCameraFromUrl } from '@ar-js-org/artoolkit5-wasm';
-import { ARToolKitCore, ARToolKitModule, ARToolKitState } from './domain';
+import { ARToolKitCore, ARToolKitModule, ARToolKitState } from './domain.js';
 
 /** Emscripten module extended with the bound C++ class constructor. */
 interface ARToolKitModuleWithCore extends ARToolKitModule {

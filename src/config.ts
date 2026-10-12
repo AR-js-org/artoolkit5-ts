@@ -66,7 +66,7 @@ import {
     AR_TEMPLATE_MATCHING_MONO,
     AR_TEMPLATE_MATCHING_MONO_AND_MATRIX,
 } from '@ar-js-org/artoolkit5-constants';
-import { ARToolKitError } from './errors';
+import { ARToolKitError } from './errors.js';
 
 export type DetectionMode = 'color' | 'mono' | 'matrix' | 'color_and_matrix' | 'mono_and_matrix';
 

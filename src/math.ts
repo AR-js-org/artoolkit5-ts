@@ -31,8 +31,8 @@
  *
  */
 
-import { ARToolKitState } from './domain';
-import { assertNotDisposed } from './errors';
+import { ARToolKitState } from './domain.js';
+import { assertNotDisposed } from './errors.js';
 
 const GL_MATRIX_LENGTH = 16;
 

@@ -41,7 +41,7 @@ export type {
     MarkerPose,
     MarkerType,
     TrackedMarkerState,
-} from './domain';
+} from './domain.js';
 
 export type {
     DetectionMode,
@@ -51,12 +51,12 @@ export type {
     LabelingMode,
     MatrixCodeType,
     ThresholdMode,
-} from './config';
+} from './config.js';
 
-export { ARToolKitError } from './errors';
-export { createARToolKitState, disposeARToolKitState } from './init';
-export { configureDetector } from './detector';
-export { loadPatternMarker } from './markers';
-export { processFrame, trackBarcodeMarker, trackMarker } from './tracking';
-export { arglCameraViewRHf, getCameraProjectionMatrix, transMatToGLMat } from './math';
-export { ARTOOLKIT5_TS_VERSION, VERSION } from './version';
+export { ARToolKitError } from './errors.js';
+export { createARToolKitState, disposeARToolKitState } from './init.js';
+export { configureDetector } from './detector.js';
+export { loadPatternMarker } from './markers.js';
+export { processFrame, trackBarcodeMarker, trackMarker } from './tracking.js';
+export { arglCameraViewRHf, getCameraProjectionMatrix, transMatToGLMat } from './math.js';
+export { ARTOOLKIT5_TS_VERSION, VERSION } from './version.js';

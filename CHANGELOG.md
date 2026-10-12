@@ -7,32 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- **`disposeARToolKitState` no longer crashes.** It called `teardown()` and then
-  `delete()`; it now calls `delete()` alone. Closes #90.
+- **`npm run check:dist-types`**, also run in CI and on the way to the
+  registry. It packs the package, unpacks it into a `node_modules` layout and
+  compiles a throwaway consumer against it with `moduleResolution: nodenext`
+  and `skipLibCheck: false`.
 
-  `delete()` runs the C++ destructor and `~ARToolKitCore()` calls `teardown()`
-  itself, so the handles are freed either way — the extra call was based on the
-  belief that `delete()` alone would leak them, which the destructor disproves.
-  Calling both aborted the Emscripten module: `teardown()` ends with
-  `arPattDeleteHandle(this->arPattHandle)` and never nulls the member, so the
-  destructor's pass hands back a freed pointer. `arPattDeleteHandle` does guard
-  against `NULL`, but its closing `pattHandle = NULL` assigns the parameter
-  rather than the caller's pointer, so the guard cannot see a stale one.
-
-  Reproduced with no markers registered and no frame processed — create and
-  dispose was enough — and on 0.4.0 as well as 0.4.2, so it is not a regression
-  from the dependency bump. Upstream fix tracked as
-  [artoolkit5-wasm#48](https://github.com/AR-js-org/artoolkit5-wasm/issues/48);
-  calling `delete()` alone is correct whether or not that lands.
-
-  **What this did and did not break.** The `abort()` destroyed the module
-  instance belonging to that state, and `createARToolKitState` instantiates a
-  module per state, so an application that disposed and then created another
-  state kept working. The dispose call itself threw a `RuntimeError`, out of a
-  function whose only job is cleanup, leaving the instance's own deallocation
-  half-done.
+  Neither `typecheck` nor `build` occupies that position: this repository sets
+  `Bundler` resolution and `skipLibCheck: true`, so it cannot compile its own
+  declarations. That is how the fault above survived four releases, and it was
+  found downstream rather than here.
 
 - **`processFrame` no longer detects on a stale frame.** A frame that is not
   exactly `width * height * 4` bytes for the size the state was created with is
@@ -74,6 +59,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [wasm#43](https://github.com/AR-js-org/artoolkit5-wasm/pull/43), which exports
   `dist/artoolkit5.wasm` so bundlers can import its URL — the path the examples
   here already take through `?url`.
+
+### Fixed
+
+- **The shipped declarations compile under `node16`/`nodenext`.** Relative
+  imports in `src/` now carry a `.js` extension, so the emitted `.d.ts` files
+  do too. Closes #85.
+
+  Every published version shipped extensionless relative imports — 16 of them
+  across 7 declaration files in 0.3.0 — which are invalid under
+  `moduleResolution: "node16"` or `"nodenext"`. A consumer got one `TS2834` per
+  import, and no workaround short of `skipLibCheck: true` or patching
+  `node_modules`.
+
+  `tsconfig.json` here sets `moduleResolution: "Bundler"`, which permits them,
+  and `declaration: true` copies the specifier verbatim. `./x.js` resolves to
+  `x.ts` for TypeScript and Vite alike, so nothing about the build changes and
+  the declarations are correct by construction rather than by a post-processing
+  step.
+
+  **Upgrading:** nothing to do. This only removes errors.
+
+- **`disposeARToolKitState` no longer crashes.** It called `teardown()` and then
+  `delete()`; it now calls `delete()` alone. Closes #90.
+
+  `delete()` runs the C++ destructor and `~ARToolKitCore()` calls `teardown()`
+  itself, so the handles are freed either way — the extra call was based on the
+  belief that `delete()` alone would leak them, which the destructor disproves.
+  Calling both aborted the Emscripten module: `teardown()` ends with
+  `arPattDeleteHandle(this->arPattHandle)` and never nulls the member, so the
+  destructor's pass hands back a freed pointer. `arPattDeleteHandle` does guard
+  against `NULL`, but its closing `pattHandle = NULL` assigns the parameter
+  rather than the caller's pointer, so the guard cannot see a stale one.
+
+  Reproduced with no markers registered and no frame processed — create and
+  dispose was enough — and on 0.4.0 as well as 0.4.2, so it is not a regression
+  from the dependency bump. Upstream fix tracked as
+  [artoolkit5-wasm#48](https://github.com/AR-js-org/artoolkit5-wasm/issues/48);
+  calling `delete()` alone is correct whether or not that lands.
+
+  **What this did and did not break.** The `abort()` destroyed the module
+  instance belonging to that state, and `createARToolKitState` instantiates a
+  module per state, so an application that disposed and then created another
+  state kept working. The dispose call itself threw a `RuntimeError`, out of a
+  function whose only job is cleanup, leaving the instance's own deallocation
+  half-done.
 
 ## [0.3.0] - 2026-10-05
 

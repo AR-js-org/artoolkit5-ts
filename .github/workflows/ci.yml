@@ -62,3 +62,15 @@ jobs:
       # something the build no longer produces.
       - name: Verify the package contents
         run: npm pack --dry-run
+
+      # Compiles a throwaway consumer against the packed tarball under
+      # `moduleResolution: nodenext` with `skipLibCheck: false`.
+      #
+      # Neither `typecheck` nor `build` can see what this sees. `tsconfig.json`
+      # sets `moduleResolution: "Bundler"`, which permits extensionless
+      # relative imports, and `skipLibCheck: true`, which stops us compiling
+      # our own declarations — so four releases shipped `.d.ts` files that no
+      # consumer on node16/nodenext could compile, and it surfaced only
+      # downstream (#85). This is the position that reproduces it.
+      - name: Check the shipped declarations compile
+        run: npm run check:dist-types

@@ -45,13 +45,29 @@ npm run build      # vite build + tsc (lib output + .d.ts)
 npm run preview    # Preview production build
 npm test           # vitest
 npm run typecheck  # tsc --noEmit over src, test, examples and vite.config.ts
+npm run check:dist-types  # compile a consumer against the packed tarball
 ```
 
 `typecheck` covers more than what ships, deliberately: `test/` and `examples/`
 are compiled at runtime by vitest and the dev server, which catch syntax and
-resolution errors but no type errors. The two `scripts/*.mjs` and
-`test/release-notes.test.js` are plain JavaScript and stay outside it, since
-`allowJs` is off.
+resolution errors but no type errors. The `scripts/*.mjs` and the two plain
+JavaScript test files stay outside it, since `allowJs` is off.
+
+`check:dist-types` needs `npm run build` first. It packs the package, unpacks it
+into a `node_modules` layout and compiles a throwaway consumer against it with
+`moduleResolution: nodenext` and `skipLibCheck: false` — the one position
+neither `typecheck` nor `build` occupies, since this repository's own
+`tsconfig.json` sets `Bundler` resolution and `skipLibCheck: true` and therefore
+cannot compile its own declarations. That is how four releases shipped `.d.ts`
+files no `nodenext` consumer could use (#85).
+
+**Relative imports in `src/` carry a `.js` extension** — `from './domain.js'`,
+not `from './domain'` — and that is not cosmetic. `declaration: true` copies the
+specifier verbatim into the `.d.ts`, where an extensionless one is invalid under
+`node16`/`nodenext`. `./x.js` resolves to `x.ts` for TypeScript and Vite alike,
+so writing it costs nothing and makes the emitted declarations correct by
+construction rather than by a build step someone can skip. `test/` and
+`examples/` are not emitted, so nothing there depends on this.
 
 ## Conventions
 

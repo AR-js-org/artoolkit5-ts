@@ -52,7 +52,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "release-notes": "node scripts/release-notes.mjs"
+    "release-notes": "node scripts/release-notes.mjs",
+    "check:dist-types": "node scripts/check-dist-types.mjs"
   },
   "dependencies": {
     "@ar-js-org/artoolkit5-constants": "^0.4.0",
