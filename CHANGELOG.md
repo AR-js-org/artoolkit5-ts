@@ -19,31 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declarations. That is how the fault above survived four releases, and it was
   found downstream rather than here.
 
-- **`processFrame` no longer detects on a stale frame.** A frame that is not
-  exactly `width * height * 4` bytes for the size the state was created with is
-  now rejected with an `ARToolKitError` naming both sizes. Closes #87.
-
-  `passVideoData` writes nothing for a frame it refuses, leaving the engine's
-  video buffer holding the last frame it accepted. `detectMarkersInFrame`
-  ignored its return value and called `detectMarker()` regardless, so every
-  subsequent call re-detected that one frame: `processFrame` reported its poses
-  as current, frame after frame, and never reported the markers as `lost`. AR
-  content froze on a stale pose with nothing in the result to say so.
-
-  The size is checked here rather than left to the engine, which lets the
-  message name the numbers and avoids duplicating the console error the engine
-  writes. `passVideoData`'s return value is honoured too, for a refusal this
-  library does not anticipate.
-
-  **This throws where 0.3.0 silently misbehaved.** A caller already meeting the
-  documented contract — "RGBA pixels matching the width and height the state was
-  created with" — sees no change. A caller passing a wrong-sized frame was
-  getting stale poses and now gets an error, which is the point.
-
-- **`ARToolKitCore.passVideoData` is declared as returning `number`**, not
-  `void`. The binding has always returned an `int`; the declaration said
-  otherwise, which is why the rejection could go unnoticed.
-
 ### Changed
 
 - **`@ar-js-org/artoolkit5-wasm` raised to `^0.4.2`** from `^0.4.0`. Closes #88.
@@ -61,6 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   here already take through `?url`.
 
 ### Fixed
+
+- **Documentation no longer quotes versions that were never true.** Closes #83.
+
+  The `VERSION` example printed `artoolkit5-ts v0.2.2` — the last release that
+  did *not* have `VERSION`, since it shipped in 0.3.0. It now reads `e.g.`, so
+  the line is illustrative and can become dated without becoming wrong.
+
+  Sweeping for the same fault found three statements of the
+  `@ar-js-org/artoolkit5-wasm` range left at `^0.4.0` after it was raised to
+  `^0.4.2`, two in `README.md` and one in `AGENTS.md`. Those read as current
+  fact rather than as examples, so each was simply wrong — and a reader
+  overriding the range would have pinned the wrong floor.
+
+  `test/docs-versions.test.js` now keeps any range quoted beside a dependency's
+  name equal to `package.json`, naming the file and line when they disagree.
+  Prose about historical versions is deliberately untouched: "0.2.0 carries no
+  attestation" is a record that would become false if updated.
 
 - **The shipped declarations compile under `node16`/`nodenext`.** Relative
   imports in `src/` now carry a `.js` extension, so the emitted `.d.ts` files
@@ -104,6 +96,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state kept working. The dispose call itself threw a `RuntimeError`, out of a
   function whose only job is cleanup, leaving the instance's own deallocation
   half-done.
+
+- **`processFrame` no longer detects on a stale frame.** A frame that is not
+  exactly `width * height * 4` bytes for the size the state was created with is
+  now rejected with an `ARToolKitError` naming both sizes. Closes #87.
+
+  `passVideoData` writes nothing for a frame it refuses, leaving the engine's
+  video buffer holding the last frame it accepted. `detectMarkersInFrame`
+  ignored its return value and called `detectMarker()` regardless, so every
+  subsequent call re-detected that one frame: `processFrame` reported its poses
+  as current, frame after frame, and never reported the markers as `lost`. AR
+  content froze on a stale pose with nothing in the result to say so.
+
+  The size is checked here rather than left to the engine, which lets the
+  message name the numbers and avoids duplicating the console error the engine
+  writes. `passVideoData`'s return value is honoured too, for a refusal this
+  library does not anticipate.
+
+  **This throws where 0.3.0 silently misbehaved.** A caller already meeting the
+  documented contract — "RGBA pixels matching the width and height the state was
+  created with" — sees no change. A caller passing a wrong-sized frame was
+  getting stale poses and now gets an error, which is the point.
+
+- **`ARToolKitCore.passVideoData` is declared as returning `number`**, not
+  `void`. The binding has always returned an `int`; the declaration said
+  otherwise, which is why the rejection could go unnoticed.
 
 ## [0.3.0] - 2026-10-05
 
