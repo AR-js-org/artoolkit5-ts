@@ -153,9 +153,33 @@ released nothing:
 | Repository is public | npm cannot generate provenance from a private repo |
 | Version not on npm | that version was already published, **or** the registry lookup could not answer (#81) |
 
-The first three in `verify` only apply to a tag push; a dispatch has no tag to
-check. That is decided inside one shell script rather than through step-level
-`if:` conditions, deliberately — see the comments in the workflow.
+The first three in `verify` only apply when there is a tag to check. The
+`release` job, though, runs for a **tag push and nothing else**: a
+`workflow_dispatch` may name a tag as its ref, so the gate tests
+`github.event_name == 'push'` as well as `github.ref_type == 'tag'`. Dispatching
+against a tag therefore checks it without releasing it, which is a useful thing
+to do before pushing it.
+
+## Which dist-tag a release gets
+
+Both publishing workflows decide it through `scripts/dist-tag.mjs` rather than
+letting `npm publish` move `latest` by default. They differ only in the name
+used when `latest` must not move:
+
+| | fallback | why |
+| --- | --- | --- |
+| `release.yml` | `next` | npm's convention for a prerelease |
+| `publish-tag.yml` | `recovered` | an already-tagged version published out of band |
+
+A version takes `latest` only when it is **stable** and **newer** than what the
+registry currently serves. So pushing `v0.4.0-rc.1` publishes it under `next`,
+and `npm install @ar-js-org/artoolkit5-ts` still resolves the last stable
+release. The run summary says which tag was chosen, and how to remove a
+non-`latest` one when it has served its purpose.
+
+Worth knowing because the obvious assumption is wrong: a pushed tag is the
+newest *tag*, which is not the same as the version that should be the default
+install. `release.yml` assumed they were the same until #92's review.
 
 ## Publishing
 
@@ -363,11 +387,12 @@ it keeps provenance.
 
 ## Open items
 
-- **The `pull_request` rule on `main`.** Nothing pushes to `main` from a
-  workflow any more, so ruleset `24843561` ("Protect main branch", currently
-  `deletion` and `non_fast_forward` only) can gain the pull-request rule the
-  other AR-js-org repositories have. That is the last box in
+- **[#93](https://github.com/AR-js-org/artoolkit5-ts/issues/93) — the
+  `pull_request` rule on `main`.** Nothing pushes to `main` from a workflow any
+  more, so ruleset `24843561` ("Protect main branch", currently `deletion` and
+  `non_fast_forward` only) can gain the pull-request rule the other AR-js-org
+  repositories have. It is the last box in
   [arjs-dev-tools#8](https://github.com/AR-js-org/arjs-dev-tools/issues/8) for
   this repository, and it needs doing **after** the first tag-triggered release
-  has run, not before — so that a problem with the new flow can still be fixed
-  by pushing to `main`.
+  has run, not before — so that a problem with a flow that has never executed
+  can still be fixed by pushing to `main`.

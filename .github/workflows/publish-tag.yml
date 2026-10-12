@@ -204,44 +204,19 @@ jobs:
       # moving it here: the decision cannot fail the run on the input, so it was
       # never doing fail-fast work. What does belong early — whether this
       # version is already published — stays early, above.
+      # `scripts/dist-tag.mjs` rather than inline shell, because `release.yml`
+      # now needs the same answer and two copies of this logic in two files is
+      # exactly the drift #82 was about. It is also unit-tested, which the
+      # inline version could not be — see test/dist-tag.test.js — and it no
+      # longer reaches the network for `npx semver@7` mid-release.
+      #
+      # `recovered` as the fallback: this workflow publishes an already-tagged
+      # version out of band, so a tag naming that is more use than `next`. The
+      # summary below says how to remove it.
       - name: Decide the dist-tag
         run: |
-          NAME="$(node -p "require('./package.json').name")"
-          LOOKUP_ERROR="$(mktemp)"
-          PUBLISHED=yes
-
-          # Three outcomes, kept apart. An empty result from a swallowed error
-          # used to be indistinguishable from a package with nothing published,
-          # and that branch assigns `latest` — so a registry blip while
-          # recovering an old version was enough to point `latest` backwards,
-          # the one thing this step exists to prevent (#81).
-          if ! LATEST="$(npm view "$NAME" version 2>"$LOOKUP_ERROR")"; then
-            if grep -q 'E404' "$LOOKUP_ERROR"; then
-              PUBLISHED=no
-            else
-              echo "::error::Could not read the current latest version of $NAME. The registry lookup failed for a reason other than the package being absent, so this run cannot tell 'nothing published yet' from 'registry unreachable' — and getting that wrong points latest at an older version. Re-run once the registry is reachable."
-              echo "npm view wrote:"
-              cat "$LOOKUP_ERROR"
-              exit 1
-            fi
-          fi
-
-          # Before the no-published-version branch, not after it. The other
-          # order let a prerelease take `latest` whenever the lookup came back
-          # empty, which this step's own comment claimed could not happen (#81).
-          if printf '%s' "$VERSION" | grep -q -- '-'; then
-            echo "$VERSION is a prerelease; it never becomes latest."
-            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
-          elif [ "$PUBLISHED" = no ]; then
-            echo "$NAME has no published version; $VERSION becomes latest."
-            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
-          elif npx --yes --quiet semver@7 "$VERSION" -r ">$LATEST" >/dev/null 2>&1; then
-            echo "$VERSION is newer than the published $LATEST; it becomes latest."
-            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
-          else
-            echo "$VERSION is not newer than the published $LATEST; leaving latest alone."
-            echo "DIST_TAG=recovered" >> "$GITHUB_ENV"
-          fi
+          DIST_TAG="$(node scripts/dist-tag.mjs "$VERSION" --fallback recovered)"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
 
       # Authenticated by trusted publishing (OIDC), exactly as in `release.yml`.
       # `--provenance` is absent for the same reason: publishing this way attests

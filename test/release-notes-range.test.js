@@ -22,6 +22,9 @@
  *  You should have received a copy of the MIT License along with artoolkit5-ts.
  *  If not, see <https://opensource.org/licenses/MIT>.
  *
+ *  This library wraps a WebAssembly build of ARToolkit5 (WebARKitLib), which
+ *  is licensed under the GNU Lesser General Public License v3.0.
+ *
  *  Copyright (c) 2026 AR-js-org
  *
  *  Author(s): Walter Perdan @kalwalt https://github.com/kalwalt

@@ -59,6 +59,12 @@ concurrency:
   group: publish-${{ github.repository }}
   cancel-in-progress: false
 
+# One definition of "this run releases something", so the `release` job's gate
+# and everything `verify` says about itself cannot disagree. `ref_type` alone is
+# not enough: a dispatch may name a tag as its ref.
+env:
+  IS_RELEASE: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+
 jobs:
   # Everything that can fail safely. Nothing here leaves the runner: no Release,
   # no package. A dispatch ends when this job does.
@@ -115,7 +121,15 @@ jobs:
               echo "::error::Tag $GITHUB_REF_NAME implies version $VERSION but package.json says $ACTUAL. The tag does not point at that release's commit."
               exit 1
             fi
-            echo "Releasing $VERSION from $GITHUB_REF_NAME."
+            # Keyed on the ref type, not on IS_RELEASE: a dispatch may name a
+            # tag, and checking that tag against the manifest is exactly what
+            # someone verifying a tag before pushing it wants. Only whether the
+            # run goes on to release differs, so only the wording does.
+            if [ "$IS_RELEASE" = true ]; then
+              echo "Releasing $VERSION from $GITHUB_REF_NAME."
+            else
+              echo "Checking tag $GITHUB_REF_NAME without releasing it: this is a dispatch, and only a tag push releases."
+            fi
           else
             VERSION="$ACTUAL"
             echo "Verification run on $GITHUB_REF_NAME at package.json's $VERSION. Nothing will be released or published."
@@ -219,7 +233,7 @@ jobs:
       - name: Summarise
         run: |
           {
-            if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$IS_RELEASE" = true ]; then
               echo "### Verified $VERSION from $GITHUB_REF_NAME"
               echo ""
               echo "Every check passed. The \`release\` job creates the GitHub Release and publishes."
@@ -228,8 +242,13 @@ jobs:
               echo ""
               echo "Version \`$VERSION\` on \`$GITHUB_REF_NAME\` passed every check."
               echo ""
-              echo "The \`release\` job is skipped for a dispatch, so nothing left this runner."
-              echo "The staged artifact above is what a tag push would publish."
+              echo "The \`release\` job is skipped for anything that is not a tag push, so nothing"
+              echo "left this runner. The staged artifact above is what a tag push would publish."
+              if [ "$GITHUB_REF_TYPE" = tag ]; then
+                echo ""
+                echo "This was dispatched against tag \`$GITHUB_REF_NAME\`. Pushing that tag is what"
+                echo "releases it; dispatching against it only checks it."
+              fi
             fi
             echo ""
             cat release-notes.md
@@ -237,10 +256,17 @@ jobs:
 
   # Everything that cannot be undone. The `if:` below guards the whole job, so a
   # step added here is covered whether or not whoever adds it reads this comment.
-  # It tests the event, not an input: a dispatch cannot satisfy it at all.
+  #
+  # Both halves are needed, and `ref_type` alone was a real hole: a
+  # `workflow_dispatch` may name a **tag** as its ref — "the reference can be a
+  # branch or tag name", per the REST reference for the dispatch event — so
+  # `gh workflow run release.yml --ref v0.3.1` made `ref_type == 'tag'` true and
+  # published from what this workflow advertises as verification-only. Testing
+  # the event name is what makes a dispatch incapable of publishing, which is
+  # what the comments above claim.
   release:
     needs: verify
-    if: ${{ github.ref_type == 'tag' }}
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
 
     runs-on: ubuntu-latest
 
@@ -373,12 +399,29 @@ jobs:
       # --access public is required for a scoped package; npm otherwise defaults
       # it to restricted.
       #
-      # No dist-tag decision here, unlike `publish-tag.yml`. This workflow only
-      # ever publishes the tag that was just pushed, which is the newest
-      # release, so inheriting `latest` is correct. `publish-tag.yml` can
-      # publish an *older* tag, which is why it has to choose (#81).
+      # The dist-tag is chosen, not inherited, through the same script
+      # `publish-tag.yml` uses. An earlier version of this workflow argued that
+      # inheriting `latest` was correct here because a pushed tag is always the
+      # newest release. That is wrong twice:
+      #
+      #   - a **prerelease** tag passes every check above, and `npm publish`
+      #     would make `v0.4.0-rc.1` what a plain `npm install` resolves;
+      #   - an **older** tag is reachable too. Delete and re-push the tag of a
+      #     release whose publish failed, after a newer version shipped, and
+      #     this workflow sees an unpublished version on `main` that matches its
+      #     manifest — and would point `latest` backwards.
+      #
+      # `next` as the fallback, npm's convention for a prerelease, rather than
+      # `publish-tag.yml`'s `recovered`: reaching the fallback here means the
+      # version should not be the default install, not that something is being
+      # recovered.
+      - name: Decide the dist-tag
+        run: |
+          DIST_TAG="$(node scripts/dist-tag.mjs "$VERSION" --fallback next)"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
+
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --access public --tag "$DIST_TAG"
 
       - name: Summarise
         run: |
@@ -388,9 +431,21 @@ jobs:
             echo ""
             echo "- Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME"
             echo "- npm: https://www.npmjs.com/package/$NAME/v/$VERSION"
+            echo "- dist-tag: \`$DIST_TAG\`"
             echo ""
             echo "Published with provenance over OIDC — no token involved."
             echo ""
+            if [ "$DIST_TAG" != latest ]; then
+              echo "> [!IMPORTANT]"
+              echo "> \`latest\` was **not** moved, so a plain \`npm install $NAME\` still resolves"
+              echo "> the previous version. Install this one as \`$NAME@$DIST_TAG\`. Remove the tag"
+              echo "> once it has served its purpose:"
+              echo ">"
+              echo "> \`\`\`bash"
+              echo "> npm dist-tag rm $NAME $DIST_TAG"
+              echo "> \`\`\`"
+              echo ""
+            fi
             echo "Now re-sync \`dev\` with \`main\`:"
             echo ""
             echo "    git switch dev && git merge --ff-only origin/main && git push"
