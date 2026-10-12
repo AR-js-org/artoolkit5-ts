@@ -32,8 +32,8 @@
  */
 
 import { addMarkerFromUrl } from '@ar-js-org/artoolkit5-wasm';
-import { ARToolKitState } from './domain';
-import { assertNotDisposed } from './errors';
+import { ARToolKitState } from './domain.js';
+import { assertNotDisposed } from './errors.js';
 
 /**
  * Downloads a pattern file (`.patt`), writes it to the WASM virtual file system

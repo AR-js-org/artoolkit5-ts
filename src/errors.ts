@@ -31,7 +31,7 @@
  *
  */
 
-import { ARToolKitState } from './domain';
+import { ARToolKitState } from './domain.js';
 
 /**
  * Error thrown by this library.

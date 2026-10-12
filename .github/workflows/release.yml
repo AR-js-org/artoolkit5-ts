@@ -208,6 +208,13 @@ jobs:
       - name: Show what would be published
         run: npm pack --dry-run
 
+      # A consumer-visible contract, so it is checked on the way to the
+      # registry and not only in CI: the shipped declarations must compile
+      # under `moduleResolution: nodenext` with `skipLibCheck: false`. Four
+      # releases went out failing that, and nothing here could see it (#85).
+      - name: Check the shipped declarations compile
+        run: npm run check:dist-types
+
       # Handing the built tree to the release job, rather than rebuilding it
       # there, is what makes a verification run meaningful: the tarball that
       # gets published is the one `npm pack --dry-run` just reported on, not a

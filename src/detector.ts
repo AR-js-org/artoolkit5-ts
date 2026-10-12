@@ -39,9 +39,9 @@ import {
     lookUp,
     MATRIX_CODE_TYPES,
     THRESHOLD_MODES,
-} from './config';
-import { ARToolKitState } from './domain';
-import { ARToolKitError, assertNotDisposed } from './errors';
+} from './config.js';
+import { ARToolKitState } from './domain.js';
+import { ARToolKitError, assertNotDisposed } from './errors.js';
 
 /**
  * Applies detector tuning.

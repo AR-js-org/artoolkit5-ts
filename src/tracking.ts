@@ -38,9 +38,9 @@ import {
     MarkerPose,
     MarkerType,
     TrackedMarkerState,
-} from './domain';
-import { ARToolKitError, assertNotDisposed } from './errors';
-import { arglCameraViewRHf, transMatToGLMat } from './math';
+} from './domain.js';
+import { ARToolKitError, assertNotDisposed } from './errors.js';
+import { arglCameraViewRHf, transMatToGLMat } from './math.js';
 
 /** Elements in ARToolKit's 3x4 pose matrix. */
 const POSE_ELEMENT_COUNT = 12;
