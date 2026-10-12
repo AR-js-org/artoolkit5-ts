@@ -41,13 +41,25 @@ import { ARToolKitError } from '../src/errors';
 import { createMockState } from './mock-core';
 
 describe('disposeARToolKitState', () => {
-    it('releases the ARToolKit handles before freeing the instance', () => {
-        // delete() alone would leak the handles teardown() is responsible for.
+    // This test asserted the opposite until #90, on the comment it carried:
+    // "delete() alone would leak the handles teardown() is responsible for".
+    // That is not true — `~ARToolKitCore()` calls `teardown()` — and calling
+    // both aborted the module by double-freeing `arPattHandle`. A test pinning
+    // incorrect behaviour is worse than no test, because it argues against the
+    // fix.
+    //
+    // What a mock can check is the call sequence, which is the constraint:
+    // `teardown()` must not precede `delete()`. What it cannot check is the
+    // abort itself, since `calls.teardown` is a counter and counters do not
+    // double-free. That gap is why this bug reached a documented public
+    // function with lifecycle tests already over it, and it is closed by
+    // exercising the real module instead — see the PR.
+    it('frees the instance with delete() alone, which tears down in C++', () => {
         const { state, calls } = createMockState();
         disposeARToolKitState(state);
 
-        expect(calls.teardown).toBe(1);
         expect(calls.delete).toBe(1);
+        expect(calls.teardown).toBe(0);
     });
 
     it('marks the state disposed and drops registered markers', () => {
@@ -68,8 +80,8 @@ describe('disposeARToolKitState', () => {
         disposeARToolKitState(state);
         disposeARToolKitState(state);
 
-        expect(calls.teardown).toBe(1);
         expect(calls.delete).toBe(1);
+        expect(calls.teardown).toBe(0);
     });
 });
 
