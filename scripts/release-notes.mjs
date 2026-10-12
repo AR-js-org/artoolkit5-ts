@@ -60,10 +60,35 @@ const git = (...args) =>
 /** The tag to compare against, or null when this is the first release. */
 function previousTag(explicit) {
     if (explicit) return explicit;
+
+    let nearest;
     try {
-        return git('describe', '--tags', '--abbrev=0');
+        nearest = git('describe', '--tags', '--abbrev=0');
     } catch {
         return null; // No tags yet.
+    }
+
+    // When HEAD *is* a tag, the nearest tag is that tag, and `<tag>..HEAD` is
+    // empty. Harmless while releases were cut from an untagged main and the tag
+    // came afterwards; fatal once the release workflow runs on the tag push
+    // itself, which is the only context where HEAD is a tagged commit (#22).
+    //
+    // Stepping back to the tag nearest HEAD's first parent is what gives the
+    // range the notes are supposed to cover. Excluding the name instead would
+    // be wrong: two tags can point at one commit, and the next one down may
+    // also be on HEAD.
+    try {
+        if (git('rev-parse', `${nearest}^{commit}`) !== git('rev-parse', 'HEAD')) {
+            return nearest;
+        }
+    } catch {
+        return nearest; // Cannot compare; the nearest tag is the best answer.
+    }
+
+    try {
+        return git('describe', '--tags', '--abbrev=0', 'HEAD^');
+    } catch {
+        return null; // HEAD is the first release's tag, with nothing before it.
     }
 }
 

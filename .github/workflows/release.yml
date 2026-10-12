@@ -1,113 +1,138 @@
 name: Release
 
-# Run manually from the Actions tab. This workflow performs the whole release:
-# it bumps the version, promotes the changelog, tags, creates the GitHub Release
-# and publishes to npm.
+# Triggered by pushing a release tag on `main`. The tag is the instruction: this
+# workflow creates the GitHub Release for it and publishes the package, and it
+# does nothing else — no version bump, no changelog promotion, no commit, and no
+# push to any branch.
 #
-# It is one workflow rather than two on purpose. A Release created with the
-# default GITHUB_TOKEN does not trigger other workflows — GitHub blocks that to
-# prevent recursion — so a separate `on: release: published` publisher would
-# silently never fire.
+# That is the point of the rewrite (#22, #86). This workflow used to be a
+# dispatch that committed the version bump and pushed it straight to `main` with
+# the GITHUB_TOKEN. A repository ruleset cannot exempt that push — GitHub
+# refuses GitHub Actions as a bypass actor, and the GITHUB_TOKEN cannot bypass a
+# pull-request rule — so `main` here had to go without the pull-request rule
+# every other AR-js-org repository has. Nothing pushes to `main` any more, so
+# the rule can go back on. Tags are not subject to the ruleset.
 #
-# It is two *jobs* on purpose as well. Everything irreversible lives in
-# `release`, which carries a single `if: ${{ !inputs.dry_run }}` on the job
-# rather than repeated on every step. A step added there inherits the guard, so
-# the failure this structure exists to prevent — someone adds a publish target,
-# forgets the `if:`, and a run invoked with dry_run publishes anyway — is no
-# longer possible to write. npm never allows a version to be replaced, so that
-# mistake would have been unrecoverable.
+# The version bump now arrives the ordinary way, as a release pull request into
+# `dev`. See MAINTAINERS.md; the process is the one in
+# AR-js-org/arjs-dev-tools#8, with arjs-plugin-artoolkit as its reference
+# implementation.
+#
+# Publishing stays in this file rather than moving to a separate `publish.yml`
+# as the reference does. The reference splits them so a failed npm publish does
+# not also lose the Release's build assets — and this Release carries no assets,
+# only notes, so the split would buy nothing here while requiring a second npm
+# trusted publisher entry. npm authorises per workflow *filename*, and the entry
+# for this repository names `release.yml`.
+#
+# It is two *jobs*, and the division is now structural rather than a flag.
+# Everything irreversible lives in `release`, gated on
+# `github.ref_type == 'tag'`. A `workflow_dispatch` therefore cannot publish —
+# not "must remember to pass dry_run", but cannot, because a dispatch runs
+# against a branch and the job is skipped for it. A step added to `release`
+# inherits that, which is the failure the old `dry_run` input invited: someone
+# adds a publish target, forgets its `if:`, and a dry run publishes anyway. npm
+# never allows a version to be replaced, so that mistake was unrecoverable.
 on:
+  push:
+    tags:
+      - 'v*.*.*'
+  # Verification only, and structurally incapable of anything else: every check
+  # below runs against the dispatched ref and the `release` job is skipped. Use
+  # it to ask "would this tree release cleanly" before tagging.
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release, without a leading v (e.g. 0.1.0)'
-        required: true
-        type: string
-      dry_run:
-        description: 'Run every check and show the result without tagging or publishing'
-        required: false
-        default: false
-        type: boolean
 
-# Two releases running at once would race over the tag and the branch push, and
-# a release racing a recovery publish would race over the `latest` dist-tag. The
-# group is therefore shared with `publish-tag.yml` and keyed on the package this
-# repository publishes, not on the workflow: a group per workflow serialises a
-# workflow only against itself, which is not the hazard (#82).
+# Two releases at once would race over the Release and the registry, and the
+# other publisher is `publish-tag.yml`, so the group is shared with it and keyed
+# on the package rather than the workflow. Keep this string identical in both
+# files — that it matches is the whole mechanism (#82).
 #
 # Serialising is not queueing: a group holds one run and one pending run, and a
 # third request cancels the pending one and takes its place. See the longer note
 # in `publish-tag.yml`, and "Known failure modes" in MAINTAINERS.md.
 #
-# Never `cancel-in-progress` here: cancelling a run that has already published
-# leaves a version on npm with no tag and no Release behind it, and npm will not
-# let that version be replaced. Queueing is the only safe behaviour.
+# Never `cancel-in-progress`: cancelling a run that has already published leaves
+# a version on npm that npm will not let be replaced. Letting it finish is the
+# only safe behaviour — "queueing" would overclaim the same way the comment this
+# replaces did.
 concurrency:
   group: publish-${{ github.repository }}
   cancel-in-progress: false
 
+# One definition of "this run releases something", so the `release` job's gate
+# and everything `verify` says about itself cannot disagree. `ref_type` alone is
+# not enough: a dispatch may name a tag as its ref.
+env:
+  IS_RELEASE: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+
 jobs:
-  # Everything that can fail safely. Nothing here leaves the runner: no commit,
-  # no tag, no Release, no package. A dry run ends when this job does.
-  prepare:
+  # Everything that can fail safely. Nothing here leaves the runner: no Release,
+  # no package. A dispatch ends when this job does.
+  verify:
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
 
     outputs:
-      version: ${{ steps.validate.outputs.version }}
+      version: ${{ steps.resolve.outputs.version }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # Pinned to the dispatched commit rather than the branch tip so the
-          # release job tags and publishes exactly what was tested here, even if
-          # someone pushes to main while the run is in progress.
+          # Pinned to the commit the event names rather than to a branch tip, so
+          # the release job publishes exactly what was verified here. For a tag
+          # push this is the tagged commit.
           ref: ${{ github.sha }}
-          # Full history: release notes are derived from commits since the
-          # previous tag, and a shallow clone has neither the tags nor the log.
+          # Full history and tags: the release notes are derived from the
+          # commits since the previous tag, and a shallow clone has neither.
           fetch-depth: 0
 
-      - name: Ensure releases run from main
-        if: ${{ !inputs.dry_run && github.ref_name != 'main' }}
+      # One step, two cases, decided in bash rather than through a step-level
+      # `if:`. A tag is a claim about which version is being released, so it is
+      # checked against the manifest; a dispatch makes no such claim, and reads
+      # the manifest instead.
+      - name: Resolve the version
+        id: resolve
         run: |
-          echo "::error::Release workflow must be run from the main branch (current: ${GITHUB_REF_NAME})."
-          exit 1
+          ACTUAL="$(node -p "require('./package.json').version")"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22.x'
-          cache: 'npm'
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
 
-      - name: Validate the version
-        id: validate
-        # Read from the environment rather than interpolated into the script.
-        # `${{ }}` substitution happens before the shell parses anything, so a
-        # dispatch input spliced straight into `run:` is executed as code — the
-        # regex below would never get to see it.
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          VERSION="$INPUT_VERSION"
+            # Anchored to the whole string with bash's own `=~` rather than
+            # piped through grep: grep is line-oriented, so a multi-line value
+            # matches on its first line and passes — and the GITHUB_ENV write
+            # below would then add a second environment record for every later
+            # step. A git ref cannot contain a newline, so this is belt and
+            # braces; the braces cost one line.
+            SEMVER='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+            if ! [[ "$VERSION" =~ $SEMVER ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not name a version. Expected vX.Y.Z, optionally with a prerelease suffix."
+              exit 1
+            fi
 
-          # Matched with bash's own `=~` rather than piped through grep. grep is
-          # line-oriented, so `0.2.0\nFOO=pwned` matches on its first line and
-          # passes — and `echo "VERSION=$VERSION" >> "$GITHUB_ENV"` below would
-          # then write FOO=pwned as a second environment record for every later
-          # step. `[[ =~ ]]` anchors ^ and $ to the whole string, newline and
-          # all, so a multi-line value is rejected outright.
-          SEMVER='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
-          if ! [[ "$VERSION" =~ $SEMVER ]]; then
-            echo "::error::'$INPUT_VERSION' is not a valid semver version. Give it without a leading v, e.g. 0.1.0."
-            exit 1
-          fi
-
-          if git show-ref --tags --verify --quiet "refs/tags/v$VERSION"; then
-            echo "::error::Tag v$VERSION already exists. Releasing it again would rewrite history."
-            exit 1
+            # The tag names what is published, so a disagreement means the wrong
+            # tree — and this is what stands between a stray tag and a publish,
+            # now that the tag is the trigger. Releasing a version nobody
+            # prepared requires a commit that sets it.
+            if [ "$VERSION" != "$ACTUAL" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME implies version $VERSION but package.json says $ACTUAL. The tag does not point at that release's commit."
+              exit 1
+            fi
+            # Keyed on the ref type, not on IS_RELEASE: a dispatch may name a
+            # tag, and checking that tag against the manifest is exactly what
+            # someone verifying a tag before pushing it wants. Only whether the
+            # run goes on to release differs, so only the wording does.
+            if [ "$IS_RELEASE" = true ]; then
+              echo "Releasing $VERSION from $GITHUB_REF_NAME."
+            else
+              echo "Checking tag $GITHUB_REF_NAME without releasing it: this is a dispatch, and only a tag push releases."
+            fi
+          else
+            VERSION="$ACTUAL"
+            echo "Verification run on $GITHUB_REF_NAME at package.json's $VERSION. Nothing will be released or published."
           fi
 
           # GITHUB_ENV for the rest of this job; GITHUB_OUTPUT so the release
@@ -115,61 +140,45 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # npm will not generate provenance for a package built in a private
-      # repository. Left unchecked that surfaces at the publish step, by which
-      # point the version commit, the tag and the GitHub Release have all been
-      # pushed — leaving a release with no package behind it and manual cleanup
-      # before it can be retried. Failing here costs nothing instead.
-      - name: Ensure the repository is public
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Replaces the old "Ensure releases run from main". The branch a dispatch
+      # happens to run on no longer decides anything; what matters is that the
+      # tag sits on the branch releases are cut from. A tag pushed on a feature
+      # branch would otherwise release that branch's tree.
+      #
+      # `main` is fetched explicitly rather than assumed present, so a missing
+      # remote ref reads as a fetch failure instead of silently skipping the
+      # check — the shape of mistake that made the old push preflight useless.
+      - name: Ensure the tag is on main
+        if: ${{ github.ref_type == 'tag' }}
         run: |
-          if [ "$(gh repo view "${{ github.repository }}" --json isPrivate --jq .isPrivate)" = "true" ]; then
-            echo "::error::${{ github.repository }} is private, and npm cannot generate provenance from a private repository. Make it public; provenance is no longer optional here, since trusted publishing attests it automatically and there is no flag to drop."
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not an ancestor of origin/main. Release tags are pushed on the merge commit on main — see MAINTAINERS.md. Delete the tag, merge to main, and tag there."
             exit 1
           fi
-          echo "Repository is public; provenance can be generated."
+          echo "$GITHUB_REF_NAME is on main."
+
+      # 24.x, and not interchangeable with 22.x: trusted publishing needs npm
+      # 11.5.1 or newer, and Node 22.x still ships npm 10.9.x. Node 24.x ships
+      # 11.19.x, so the requirement is met by the runtime rather than by a
+      # global npm install on top of it. Stated in both jobs so the tree is
+      # built and published on the same major.
+      #
+      # `registry-url` is deliberately not set, unlike in npm's own documented
+      # example. It makes setup-node write an .npmrc line reading
+      # `_authToken=${NODE_AUTH_TOKEN}`; with no token in the environment that
+      # expands to empty, npm decides authentication is already configured and
+      # never performs the OIDC exchange, failing with 403 or ENEEDAUTH.
+      # registry.npmjs.org is npm's default anyway. See actions/setup-node#1551
+      # and npm/documentation#1960 before adding it back.
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
-
-      # npm never allows a version to be replaced or reused, so a collision has
-      # to be caught before anything is tagged or committed.
-      - name: Check the version is not already published
-        run: |
-          NAME="$(node -p "require('./package.json').name")"
-          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
-            echo "::error::$NAME@$VERSION is already published. npm versions cannot be replaced."
-            exit 1
-          fi
-          echo "$NAME@$VERSION is available."
-
-      # Ordered before the build, not after it. `vite.config.ts` reads the
-      # version out of package.json and substitutes it into the bundle, so
-      # building first embedded the *previous* version while the published
-      # package.json carried the new one — a package confidently reporting a
-      # version it is not, which is worse than exposing none.
-      #
-      # Bumping first also puts the version test in `npm test` below to work:
-      # it compares the exported constant against package.json, so it now
-      # checks the value actually being released rather than the one it
-      # replaced.
-      #
-      # `npm version` refuses to set a version to the one already in
-      # package.json, exiting with "Version not changed". That is the normal
-      # state for a first release, where the version was set by hand, so the
-      # bump has to be conditional or the release cannot proceed at all.
-      - name: Set the package version
-        run: |
-          CURRENT="$(node -p "require('./package.json').version")"
-
-          if [ "$CURRENT" = "$VERSION" ]; then
-            echo "package.json is already at $VERSION; nothing to bump."
-          else
-            echo "Bumping $CURRENT -> $VERSION."
-            npm version "$VERSION" --no-git-tag-version
-          fi
 
       - name: Typecheck
         run: npm run typecheck
@@ -177,16 +186,21 @@ jobs:
       - name: Test
         run: npm test
 
+      # The version is no longer bumped here, so nothing about this step's
+      # position is delicate any more. `vite.config.ts` substitutes
+      # package.json's version into the bundle, and package.json already carries
+      # the released version: it arrived in the release pull request, which is
+      # also what the version test in `npm test` above compares against.
       - name: Build
         run: npm run build
-
-      - name: Promote the changelog
-        run: node scripts/promote-changelog.mjs "$VERSION"
 
       - name: Generate release notes
         run: |
           # Notes come from the commits, so they describe what actually landed
-          # rather than what someone remembered to write down.
+          # rather than what someone remembered to write down. The script
+          # resolves the previous tag itself, including the case this trigger
+          # introduced, where HEAD is a tag and the nearest tag is therefore
+          # itself — see scripts/release-notes.mjs.
           node scripts/release-notes.mjs > release-notes.md
           echo "--- release notes ---"
           cat release-notes.md
@@ -195,13 +209,13 @@ jobs:
         run: npm pack --dry-run
 
       # Handing the built tree to the release job, rather than rebuilding it
-      # there, is what makes the dry run meaningful: the tarball that gets
-      # published is the one `npm pack --dry-run` just reported on, not a second
-      # build that happens to be made from the same sources.
+      # there, is what makes a verification run meaningful: the tarball that
+      # gets published is the one `npm pack --dry-run` just reported on, not a
+      # second build that happens to be made from the same sources.
       - name: Stage the release for the publishing job
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ steps.validate.outputs.version }}
+          name: release-${{ steps.resolve.outputs.version }}
           path: |
             package.json
             package-lock.json
@@ -209,94 +223,141 @@ jobs:
             release-notes.md
             dist
           if-no-files-found: error
-          # Purely a hand-off between two jobs of one run. A dry run's copy is
-          # worth keeping briefly so it can be downloaded and inspected.
+          # Purely a hand-off between two jobs of one run. A verification run's
+          # copy is worth keeping briefly so it can be downloaded and inspected.
           retention-days: 7
 
-      - name: Stop here on a dry run
-        if: ${{ inputs.dry_run }}
+      # Unconditional, and says which mode it ran in rather than existing for
+      # only one of them. A summary cannot publish anything, so it needs no
+      # guard — and a guard here would be one more `if:` to keep correct.
+      - name: Summarise
         run: |
           {
-            echo "### Dry run — nothing was tagged or published"
-            echo ""
-            echo "Version \`$VERSION\` passed every check."
-            echo ""
-            echo "The \`release\` job was skipped in full, so nothing left this runner."
-            echo "The staged artifact above is what a real run would publish."
+            if [ "$IS_RELEASE" = true ]; then
+              echo "### Verified $VERSION from $GITHUB_REF_NAME"
+              echo ""
+              echo "Every check passed. The \`release\` job creates the GitHub Release and publishes."
+            else
+              echo "### Verification run — nothing was released or published"
+              echo ""
+              echo "Version \`$VERSION\` on \`$GITHUB_REF_NAME\` passed every check."
+              echo ""
+              echo "The \`release\` job is skipped for anything that is not a tag push, so nothing"
+              echo "left this runner. The staged artifact above is what a tag push would publish."
+              if [ "$GITHUB_REF_TYPE" = tag ]; then
+                echo ""
+                echo "This was dispatched against tag \`$GITHUB_REF_NAME\`. Pushing that tag is what"
+                echo "releases it; dispatching against it only checks it."
+              fi
+            fi
             echo ""
             cat release-notes.md
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Dry run complete. No tag, no release, no publish."
 
-  # Everything that cannot be undone. The `if:` below is the only thing standing
-  # between a dry run and npm, and it guards the whole job — so a step added
-  # here is covered whether or not whoever adds it remembers this comment.
+  # Everything that cannot be undone. The `if:` below guards the whole job, so a
+  # step added here is covered whether or not whoever adds it reads this comment.
+  #
+  # Both halves are needed, and `ref_type` alone was a real hole: a
+  # `workflow_dispatch` may name a **tag** as its ref — "the reference can be a
+  # branch or tag name", per the REST reference for the dispatch event — so
+  # `gh workflow run release.yml --ref v0.3.1` made `ref_type == 'tag'` true and
+  # published from what this workflow advertises as verification-only. Testing
+  # the event name is what makes a dispatch incapable of publishing, which is
+  # what the comments above claim.
   release:
-    needs: prepare
-    if: ${{ !inputs.dry_run }}
+    needs: verify
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
 
     runs-on: ubuntu-latest
 
     permissions:
-      # Pushing the version commit and tag, and creating the Release.
+      # Creating the Release. Nothing is pushed to a branch any more, but
+      # `gh release create` writes a release object and needs this.
       contents: write
-      # Mints the OIDC token npm authenticates with. This is now how the
-      # publish identifies itself at all, not only how provenance is attested:
-      # there is no npm token in this workflow any more.
+      # Mints the OIDC token npm authenticates with. This is how the publish
+      # identifies itself at all, not only how provenance is attested: there is
+      # no npm token in this workflow.
       id-token: write
 
     env:
-      VERSION: ${{ needs.prepare.outputs.version }}
+      VERSION: ${{ needs.verify.outputs.version }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The same pin as `prepare`, for the same reason.
+          # The same pin as `verify`, for the same reason.
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      # 24.x rather than the 22.x `prepare` uses, and not interchangeable:
-      # trusted publishing needs npm 11.5.1 or newer, and Node 22.x still ships
-      # npm 10.9.x. Node 24.x ships 11.19.x, so the requirement is met by the
-      # runtime rather than by a global npm install on top of it. Nothing is
-      # built here — this job only publishes a tree `prepare` already built —
-      # so the two jobs do not need to agree on a Node version.
-      #
-      # `registry-url` is deliberately not set, unlike in npm's own documented
-      # example. It makes setup-node write an .npmrc line
-      # reading `_authToken=${NODE_AUTH_TOKEN}`; with no token in the environment
-      # that expands to empty, npm decides authentication is already configured
-      # and never performs the OIDC exchange, and the publish fails with 403 or
-      # ENEEDAUTH. registry.npmjs.org is npm's default anyway, so dropping it
-      # changes nothing else. See actions/setup-node#1551 and
-      # npm/documentation#1960 before adding it back.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: '24.x'
 
-      # No `npm ci` here on purpose: publishing needs the manifest and dist/,
-      # not the dependency tree, and there are no publish lifecycle scripts to
-      # run. Reinstalling would only add a chance for the published tree to
-      # differ from the verified one.
+      # npm will not generate provenance for a package built in a private
+      # repository, and provenance is not optional here: trusted publishing
+      # attests it automatically and there is no flag to drop. First step past
+      # the gate, so it fails before the Release is created rather than after.
+      - name: Ensure the repository is public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$(gh repo view "${{ github.repository }}" --json isPrivate --jq .isPrivate)" = "true" ]; then
+            echo "::error::${{ github.repository }} is private, and npm cannot generate provenance from a private repository."
+            exit 1
+          fi
+          echo "Repository is public; provenance can be generated."
+
+      # npm never allows a version to be replaced or reused, so a collision is
+      # caught before the Release is created — the Release is the first thing
+      # this job does that outlives the run.
+      #
+      # "Not published" and "registry unreachable" are different facts, and
+      # conflating them is what #81 was about in `publish-tag.yml`. `npm view`
+      # exits non-zero with `E404` only for a genuine absence; anything else is
+      # a lookup that did not answer, and this stops rather than guesses.
+      - name: Check the version is not already published
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          LOOKUP_ERROR="$(mktemp)"
+
+          if npm view "$NAME@$VERSION" version >/dev/null 2>"$LOOKUP_ERROR"; then
+            echo "::error::$NAME@$VERSION is already published. npm versions cannot be replaced, so this tag cannot be released again. If only the GitHub Release is missing, create it by hand."
+            exit 1
+          fi
+
+          if ! grep -q 'E404' "$LOOKUP_ERROR"; then
+            echo "::error::Could not establish whether $NAME@$VERSION is already published. The registry lookup failed for a reason other than the version being absent, so this run cannot tell 'unpublished' from 'unreachable'. Re-run once the registry is reachable."
+            echo "npm view wrote:"
+            cat "$LOOKUP_ERROR"
+            exit 1
+          fi
+
+          echo "$NAME@$VERSION is available."
+
+      # No `npm ci` in this job on purpose: publishing needs the manifest and
+      # dist/, not the dependency tree, and there are no publish lifecycle
+      # scripts to run. Reinstalling would only add a chance for the published
+      # tree to differ from the verified one.
+      #
       # v8 against upload-artifact's v7 is the matching pair, not a typo: the
-      # download side has been one major ahead since its v5, which changed
-      # path handling for downloads by *id*. This downloads by name, which that
+      # download side has been one major ahead since its v5, which changed path
+      # handling for downloads by *id*. This downloads by name, which that
       # release explicitly left alone.
-      - name: Restore the prepared release
+      - name: Restore the verified release
         uses: actions/download-artifact@v8
         with:
-          name: release-${{ needs.prepare.outputs.version }}
+          name: release-${{ needs.verify.outputs.version }}
           path: .prepared
 
-      - name: Apply the prepared release over the checkout
+      - name: Apply the verified release over the checkout
         # Extracted to a scratch directory first, rather than unpacked straight
         # over the working tree, so the overwrite is this workflow's decision
         # rather than whatever the download action does with existing paths.
         #
         # Copied wholesale, though, not file by file: the artifact's own `path:`
-        # list in `prepare` is the single definition of what crosses between the
+        # list in `verify` is the single definition of what crosses between the
         # jobs. Re-enumerating it here would mean a file added there silently
         # never arriving.
         run: |
@@ -306,58 +367,22 @@ jobs:
 
           PACKED="$(node -p "require('./package.json').version")"
           if [ "$PACKED" != "$VERSION" ]; then
-            echo "::error::Prepared package.json is at $PACKED but this run is releasing $VERSION."
+            echo "::error::Verified package.json is at $PACKED but this run is releasing $VERSION."
             exit 1
           fi
-          echo "Restored the tree prepared for $VERSION."
+          echo "Applied the verified tree for $VERSION."
 
-      - name: Commit and tag
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-
-          git add package.json package-lock.json CHANGELOG.md
-
-          # Defensive only. `git commit` errors when there is nothing staged, so
-          # this tags what is already there instead. In practice it does not
-          # trigger: promote-changelog.mjs always rewrites CHANGELOG.md, and it
-          # refuses to run at all if the version was promoted by hand first
-          # ("already has a ## [X.Y.Z] section"). A successful release therefore
-          # always has a commit to make, and always needs the branch push below.
-          if git diff --staged --quiet; then
-            echo "No release changes to commit; tagging the current commit."
-          else
-            git commit -m "chore(release): $VERSION"
-          fi
-
-          git tag -a "v$VERSION" -m "Release $VERSION"
-
-          # Branch before tag, deliberately: if the push is rejected the tag
-          # never leaves the runner, no Release is created and nothing is
-          # published, so the run can simply be retried once the cause is fixed.
-          #
-          # Pushed unconditionally. With nothing committed it is a no-op that
-          # succeeds, which is simpler than carrying a flag for a branch that
-          # cannot be reached anyway: promote-changelog.mjs always rewrites
-          # CHANGELOG.md, and refuses to run at all against an already-promoted
-          # version, so a successful release always has a commit to make.
-          #
-          # Neither rejection below can be detected in advance. Reading branch
-          # protection needs admin rights, and `permissions:` has no scope that
-          # grants the workflow token any — a preflight would have reported "not
-          # protected" precisely when protection existed.
-          if ! git push origin HEAD:"${GITHUB_REF_NAME}"; then
-            echo "::error::Pushing the release commit to ${GITHUB_REF_NAME} was rejected. Nothing was tagged or published, so this run can be retried. Two causes are worth checking, and they need opposite responses. (1) Non-fast-forward: both jobs are pinned to ${{ github.sha }}, so anything pushed to ${GITHUB_REF_NAME} after this run started makes the release commit unmergeable — re-run the workflow against the new tip. (2) ${GITHUB_REF_NAME} is protected against direct pushes: either exempt github-actions[bot] from the restriction, or change this workflow to open a pull request with the version commit and tag once it merges. Preparing the release by hand beforehand is not a third option — promote-changelog.mjs refuses to run against an already-promoted version."
-            exit 1
-          fi
-          git push origin "v$VERSION"
-
+      # `--verify-tag` rather than letting gh invent the tag: with a mistyped or
+      # missing tag `gh release create` would otherwise create one at the
+      # default branch. The tag is the trigger here, so it exists by
+      # construction — but the flag costs nothing and the failure it prevents is
+      # a Release pointing at the wrong tree.
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             --verify-tag
 
@@ -371,10 +396,32 @@ jobs:
       # --provenance is deliberately absent: publishing this way attests
       # provenance automatically, and passing the flag is redundant.
       #
-      # --access public is required for the first publish of a scoped package;
-      # npm otherwise defaults it to restricted and fails on a free account.
+      # --access public is required for a scoped package; npm otherwise defaults
+      # it to restricted.
+      #
+      # The dist-tag is chosen, not inherited, through the same script
+      # `publish-tag.yml` uses. An earlier version of this workflow argued that
+      # inheriting `latest` was correct here because a pushed tag is always the
+      # newest release. That is wrong twice:
+      #
+      #   - a **prerelease** tag passes every check above, and `npm publish`
+      #     would make `v0.4.0-rc.1` what a plain `npm install` resolves;
+      #   - an **older** tag is reachable too. Delete and re-push the tag of a
+      #     release whose publish failed, after a newer version shipped, and
+      #     this workflow sees an unpublished version on `main` that matches its
+      #     manifest — and would point `latest` backwards.
+      #
+      # `next` as the fallback, npm's convention for a prerelease, rather than
+      # `publish-tag.yml`'s `recovered`: reaching the fallback here means the
+      # version should not be the default install, not that something is being
+      # recovered.
+      - name: Decide the dist-tag
+        run: |
+          DIST_TAG="$(node scripts/dist-tag.mjs "$VERSION" --fallback next)"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
+
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --access public --tag "$DIST_TAG"
 
       - name: Summarise
         run: |
@@ -382,8 +429,24 @@ jobs:
           {
             echo "### Released $NAME@$VERSION"
             echo ""
+            echo "- Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME"
             echo "- npm: https://www.npmjs.com/package/$NAME/v/$VERSION"
-            echo "- Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$VERSION"
+            echo "- dist-tag: \`$DIST_TAG\`"
             echo ""
-            echo "Published with provenance from \`${{ github.sha }}\`."
+            echo "Published with provenance over OIDC — no token involved."
+            echo ""
+            if [ "$DIST_TAG" != latest ]; then
+              echo "> [!IMPORTANT]"
+              echo "> \`latest\` was **not** moved, so a plain \`npm install $NAME\` still resolves"
+              echo "> the previous version. Install this one as \`$NAME@$DIST_TAG\`. Remove the tag"
+              echo "> once it has served its purpose:"
+              echo ">"
+              echo "> \`\`\`bash"
+              echo "> npm dist-tag rm $NAME $DIST_TAG"
+              echo "> \`\`\`"
+              echo ""
+            fi
+            echo "Now re-sync \`dev\` with \`main\`:"
+            echo ""
+            echo "    git switch dev && git merge --ff-only origin/main && git push"
           } >> "$GITHUB_STEP_SUMMARY"

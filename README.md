@@ -374,21 +374,17 @@ Branch from `dev`; `main` holds release-ready code only. Commits follow [Convent
 
 ### Releasing
 
-Releases are cut by the **Release** workflow, run manually from the Actions tab. Its only required input is the version to publish, without a leading `v` — for example `0.1.0`.
+**Pushing the tag is the release.** The version bump and changelog promotion arrive as an ordinary pull request into `dev` and reach `main` through the release PR; pushing `vX.Y.Z` on the merge commit triggers the **Release** workflow, which derives release notes from the commits, creates the GitHub Release and publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements) — so the package carries a verifiable link back to the commit and workflow run that built it.
 
-Everything after that is automatic: it runs typecheck, tests and build, sets the version, promotes the changelog, derives release notes from the commits, commits, tags `vX.Y.Z`, creates the GitHub Release and publishes to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements) — so the package carries a verifiable link back to the commit and workflow run that built it.
+No workflow pushes to a branch. That is what lets `main` be protected the same way as every other AR-js-org repository, and it is the process they all share ([arjs-dev-tools#8](https://github.com/AR-js-org/arjs-dev-tools/issues/8)).
 
-**Run it with `dry_run` first.** That performs every check and prints the notes and the tarball contents without tagging, committing or publishing. It is the only way to rehearse: npm never allows a published version to be replaced.
+**Check it first.** Dispatching the workflow by hand runs every check — typecheck, tests, build, release notes, tarball contents — and *cannot* publish: the publishing job is skipped for anything that is not a tag push. It is the only way to rehearse, since npm never allows a published version to be replaced.
 
-Before running for real, the workflow refuses to start unless:
+The workflow refuses a tag that is not `vX.Y.Z`, one whose version disagrees with `package.json`, and one that is not on `main`. Before publishing it also refuses a version already on npm, or a private repository — npm will not generate provenance from one.
 
-- the version is valid semver, not already tagged, and not already on npm
-- the branch is `main`
-- the repository is public — npm will not generate provenance from a private repository
+Preparing a release means writing the changelog. Add entries to `## [Unreleased]` as you go; `node scripts/promote-changelog.mjs X.Y.Z` renames that heading to the released version and opens a fresh one, as part of the release PR. Anything between `<!-- promote:strip -->` markers is dropped during promotion, so notes meant only for editors do not survive into a released section. `npm run release-notes` prints the Conventional Commits since the last tag if you want to see what has accumulated.
 
-Preparing a release means writing the changelog. Add entries to `## [Unreleased]` as you go; the workflow renames that heading to the released version and opens a fresh one. Anything between `<!-- promote:strip -->` markers is dropped during promotion, so notes meant only for editors do not survive into a released section. `npm run release-notes` prints the Conventional Commits since the last tag if you want to see what has accumulated.
-
-It is a single workflow rather than a "create release" and a "publish" pair because a Release created with the default `GITHUB_TOKEN` does not trigger other workflows — GitHub blocks that to prevent recursion, so the second one would silently never fire.
+Full operational detail, including the recovery path when a publish fails, is in [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## 📄 Licence
 
