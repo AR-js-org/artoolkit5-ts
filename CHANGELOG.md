@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-14
+
 ### Added
 
 - **`npm run check:dist-types`**, also run in CI and on the way to the
@@ -482,7 +484,8 @@ Pattern markers only. Barcode support is planned; NFT is out of scope for this
 project. Worker compatibility is untested — nothing in `src/` touches the DOM,
 which is necessary but not proof.
 
-[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/AR-js-org/artoolkit5-ts/compare/v0.2.0...v0.2.1
